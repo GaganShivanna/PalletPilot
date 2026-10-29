@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     provider_max_retries: int = Field(default=2, ge=0)
     provider_max_concurrency: int = Field(default=4, gt=0)
 
+    muse_base_url: str = "https://api.meta.ai/v1"
+    muse_spark_model: str = "muse-spark-1.3"
+
     # Financial estimates (labeled as estimates in API responses).
     fee_rate: float = Field(default=0.13, ge=0.0, le=1.0)
 

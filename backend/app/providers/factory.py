@@ -45,13 +45,13 @@ def get_providers(settings: Settings) -> Providers:
     if name == "sam":
         return Providers(SamSegmentationProvider(), identification, photos)
     if name == "muse_spark":
-        return Providers(segmentation, MuseSparkIdentificationProvider(), photos)
+        return Providers(segmentation, MuseSparkIdentificationProvider(settings), photos)
     if name == "muse_image":
         return Providers(segmentation, identification, MuseImagePhotoProvider())
     if name == "real":
         return Providers(
             SamSegmentationProvider(),
-            MuseSparkIdentificationProvider(),
+            MuseSparkIdentificationProvider(settings),
             MuseImagePhotoProvider(),
         )
     raise ProviderUnavailable(f"Unknown AI_PROVIDER={settings.ai_provider!r}; expected mock, sam, muse_spark, muse_image, or real.")
