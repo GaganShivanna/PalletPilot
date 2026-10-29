@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from app.providers.sam_api import detect_with_sam
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -67,12 +68,19 @@ class _ProductIdentity(BaseModel):
 class SamSegmentationProvider:
     provider_name = "sam"
 
+    def __init__(self, settings: Settings | None = None):
+        self.settings = settings or get_settings()
+
     def detect(
         self,
         frame_paths: list[Path],
         out_dir: Path,
     ) -> list[DetectedProduct]:
-        raise ProviderUnavailable(SAM_NEEDED)
+        return detect_with_sam(
+            frame_paths,
+            out_dir,
+            self.settings,
+        )
 
 
 class MuseSparkIdentificationProvider:

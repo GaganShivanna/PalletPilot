@@ -74,7 +74,7 @@ def test_real_adapters_fail_loudly_never_silent_mock(tmp_path):
     frames = _frames(tmp_path)
     product = MockSegmentationProvider().detect(frames, tmp_path / "m")[0]
     with pytest.raises(ProviderUnavailable):
-        SamSegmentationProvider().detect(frames, tmp_path / "masks")
+        SamSegmentationProvider(_settings(muse_api_key=None)).detect(frames, tmp_path / "masks")
     with pytest.raises(ProviderUnavailable):
         MuseSparkIdentificationProvider(_settings(muse_api_key=None)).identify(product)
     with pytest.raises(ProviderUnavailable):

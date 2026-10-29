@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     muse_base_url: str = "https://api.meta.ai/v1"
     muse_spark_model: str = "muse-spark-1.3"
 
+    sam_model: str = "sam-3.1"
+    sam_concepts: str = ""
+    sam_timeout_s: float = Field(default=180.0, gt=0)   
+
     # Financial estimates (labeled as estimates in API responses).
     fee_rate: float = Field(default=0.13, ge=0.0, le=1.0)
 

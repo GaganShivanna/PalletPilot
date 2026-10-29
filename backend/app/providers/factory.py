@@ -43,14 +43,14 @@ def get_providers(settings: Settings) -> Providers:
     if name == "mock":
         return Providers(segmentation, identification, photos)
     if name == "sam":
-        return Providers(SamSegmentationProvider(), identification, photos)
+        return Providers(SamSegmentationProvider(settings), identification, photos)
     if name == "muse_spark":
         return Providers(segmentation, MuseSparkIdentificationProvider(settings), photos)
     if name == "muse_image":
         return Providers(segmentation, identification, MuseImagePhotoProvider())
     if name == "real":
         return Providers(
-            SamSegmentationProvider(),
+            SamSegmentationProvider(settings),
             MuseSparkIdentificationProvider(settings),
             MuseImagePhotoProvider(),
         )
