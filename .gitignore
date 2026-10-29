@@ -1,3 +1,25 @@
 .archiver_shadow/
 .snapshots/
 .vscode/
+
+# Secrets: never commit real keys (use backend/.env.example as the template)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Backend runtime data (uploaded videos, frames, generated images)
+backend/data/
+
+# local database
+*.db
+*.db-shm
+*.db-wal
+
+.agents/memory/.muse-memory.lock
+.DS_Store
