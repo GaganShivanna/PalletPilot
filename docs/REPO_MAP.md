@@ -21,7 +21,9 @@ Last updated: 2026-10-28. State: backend Phase 2 done (mock end-to-end); iOS not
 
 ## Planned layout
 
-- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Not scaffolded.
+- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing:
+  `.xcodeproj`, `PalletPilot/{App,Core/{…},Features/{Home,Upload,Processing},Services/{Health,Pallet,Job}}`,
+  `PalletPilotTests/`. Inventory/item-edit/profit/export not built yet.
 - `backend/` — FastAPI service (see `backend/AGENTS.md`).
   - `app/routes/` — `health.py` (`GET /health`), `jobs.py` (`POST/GET /jobs`,
     `GET /jobs/{id}`, `GET /jobs/{id}/files/{path}`), `pallets.py`
@@ -60,6 +62,9 @@ Last updated: 2026-10-28. State: backend Phase 2 done (mock end-to-end); iOS not
 - `backend/tests/` — `test_jobs.py`, `test_providers.py`, `test_persistence.py`,
   `test_phase2.py` (mock e2e + failures); pytest; command in `backend/AGENTS.md`.
 - `docs/FRONTEND_HANDOFF.md`, `docs/openapi.json` — client integration contract.
+- `ios/PalletPilotTests/` — contract decoding (Swift Testing) + networking/VM (XCTest).
+- `docs/ios/` — iOS integration specs from backend audit: `BACKEND_API_AUDIT.md`,
+  `API_CONTRACTS.md`, `USER_FLOW.md`, `INTEGRATION_GAPS.md`. No Swift code yet.
 
 ## Needs verification
 

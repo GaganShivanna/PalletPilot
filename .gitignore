@@ -23,3 +23,7 @@ backend/data/
 
 .agents/memory/.muse-memory.lock
 .DS_Store
+
+# Xcode user-specific state (shared schemes in xcshareddata/ are kept)
+xcuserdata/
+*.xcuserstate
