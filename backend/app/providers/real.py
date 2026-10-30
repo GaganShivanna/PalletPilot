@@ -1,7 +1,7 @@
 """Real AI provider adapters.
 
-Muse Spark identification uses Meta Model API.
-SAM segmentation and Muse Image generation remain placeholders.
+Muse Spark identification and SAM segmentation use the Meta Model API.
+Muse Image generation remains a placeholder.
 
 Live API access must be verified separately using a configured team key.
 """
@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from app.providers.sam_api import detect_with_sam
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -38,6 +37,25 @@ MUSE_IMAGE_NEEDED = (
     "engineer: verified image-edit request/response format, credentials, "
     "and image-fidelity validation."
 )
+
+# Muse Spark's observed conditions mapped onto the public resale condition
+# schema (new, like_new, good, fair, poor, parts, unknown). Deliberately
+# conservative: only new_sealed has a safe equivalent (new). open_box/used/
+# damaged cannot be graded without risking an overstated condition claim,
+# so they map to unknown and the raw observation is preserved in
+# review_reasons for the seller to resolve.
+MUSE_SPARK_CONDITION_MAP = {
+    "new_sealed": "new",
+    "open_box": "unknown",
+    "used": "unknown",
+    "damaged": "unknown",
+    "unknown": "unknown",
+}
+
+
+def map_muse_spark_condition(raw_condition: str) -> str:
+    """Map a Muse Spark condition onto the public condition schema."""
+    return MUSE_SPARK_CONDITION_MAP.get(raw_condition, "unknown")
 
 
 class _ProductIdentity(BaseModel):
@@ -76,6 +94,15 @@ class SamSegmentationProvider:
         frame_paths: list[Path],
         out_dir: Path,
     ) -> list[DetectedProduct]:
+        # Lazy import: sam_api pulls in meta_sam_parser, which mock-mode
+        # runs must not require. Import only when SAM is actually used.
+        try:
+            from app.providers.sam_api import detect_with_sam
+        except ImportError as exc:
+            raise ProviderUnavailable(
+                "SAM dependencies are not installed. Run: "
+                "cd backend && .venv/bin/pip install -r requirements.txt"
+            ) from exc
         return detect_with_sam(
             frame_paths,
             out_dir,
@@ -253,18 +280,27 @@ class MuseSparkIdentificationProvider:
                 "Muse Spark did not return a complete, valid product identity."
             ) from None
 
-        review_reasons = list(
-            dict.fromkeys(
-                identity.review_reasons
-                + [
-                    "Seller must confirm identity and visual condition.",
-                    "Functionality has not been verified.",
-                ]
+        condition = map_muse_spark_condition(identity.condition)
+
+        extra_reasons = [
+            "Seller must confirm identity and visual condition.",
+            "Functionality has not been verified.",
+        ]
+        if condition != identity.condition:
+            # Preserve the raw model observation; the mapped value is a
+            # deliberately conservative resale-schema grade.
+            extra_reasons.append(
+                f"Observed condition (Muse Spark): {identity.condition}; "
+                f"recorded as '{condition}' pending seller review."
             )
+
+        review_reasons = list(
+            dict.fromkeys(identity.review_reasons + extra_reasons)
         )
 
         return Identification(
-            **identity.model_dump(exclude={"review_reasons"}),
+            **identity.model_dump(exclude={"review_reasons", "condition"}),
+            condition=condition,
             review_reasons=review_reasons,
             needs_review=True,
             provider=self.provider_name,

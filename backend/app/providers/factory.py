@@ -31,10 +31,11 @@ class Providers:
 def get_providers(settings: Settings) -> Providers:
     """Return the provider set for ``settings.ai_provider``.
 
-    ``mock`` is fully local. ``sam`` / ``muse_spark`` / ``muse_image`` select
-    the matching real adapter (currently raising ``ProviderUnavailable``)
-    while keeping the other stages on mock. Unknown names raise loudly —
-    never silently fall back to fabricated results.
+    ``mock`` is fully local. ``sam`` / ``muse_spark`` select the matching
+    hosted adapter (needing ``MUSE_API_KEY``, SAM also ``SAM_CONCEPTS``)
+    while keeping the other stages on mock; ``muse_image`` still raises
+    ``ProviderUnavailable`` (photo fallback covers it). Unknown names raise
+    loudly — never silently fall back to fabricated results.
     """
     name = settings.ai_provider.strip().lower()
     segmentation: SegmentationProvider = MockSegmentationProvider()

@@ -12,6 +12,13 @@ Interactive docs when the server runs: `/docs`.
   `review_reasons` entry starting with `mock`, `price_source: "mock_fixture"`
   (or `"none"` when unpriced), and descriptions ending with the
   `Demo draft: ...` marker. Never present these as verified listings.
+- **Real AI providers** (server runs with `AI_PROVIDER=sam|muse_spark|real`;
+  endpoint shapes unchanged): drafts have no `Demo draft` marker, `provider`
+  is `sam`/`muse_spark`, item ids look like `<job_id>:concept_0_7`, and all
+  conditions still come from the documented `new … unknown` set (the server
+  maps model observations conservatively; raw observations survive in
+  `review_reasons`). Real items are currently unpriced (`price_source:
+  "none"`) and excluded from revenue. Details: `docs/AI_INTEGRATION.md`.
 
 ## Endpoints
 

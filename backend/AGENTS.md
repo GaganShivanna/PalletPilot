@@ -4,10 +4,11 @@ Subsystem rules for the PalletPilot API service. The root `AGENTS.md` also appli
 
 ## State
 
-Phase 1 done: upload -> frame sampling -> provider segmentation (mock default)
--> stub photos / listings. SQLite metadata (`meta.db`) with restart recovery.
-Real SAM / Muse Spark / Muse Image adapters raise `ProviderUnavailable` until
-integrated; `AI_PROVIDER` selects the provider set (mock default).
+Phase 2 + AI integration done: upload -> frame sampling -> provider
+segmentation (mock default, hosted SAM/Muse Spark available) -> photos w/
+fallback -> listings. SQLite metadata (`meta.db`) with restart recovery.
+`AI_PROVIDER` selects the provider set (mock default); Muse Image still
+raises `ProviderUnavailable` (fallback covers it). Live inference unverified.
 
 ## Stack
 
