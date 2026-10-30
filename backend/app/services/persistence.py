@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_pallet ON items (pallet_id);
 CREATE INDEX IF NOT EXISTS idx_items_job ON items (job_id);
+CREATE TABLE IF NOT EXISTS job_events (
+    job_id TEXT NOT NULL,
+    event_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    item_id TEXT,
+    created_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (job_id, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_events_job ON job_events (job_id, event_id);
 """
 
 
@@ -110,12 +120,19 @@ class Database:
     def recover_interrupted(self) -> int:
         """Mark jobs stuck in non-terminal states as failed after a restart."""
         with self._connect() as conn:
-            cur = conn.execute(
+            rows = conn.execute(
+                "SELECT id FROM jobs WHERE status NOT IN ('completed', 'failed')"
+            ).fetchall()
+            conn.execute(
                 "UPDATE jobs SET status = 'failed', error = 'Interrupted by restart',"
                 " updated_at = ? WHERE status NOT IN ('completed', 'failed')",
                 (utcnow(),),
             )
-            return cur.rowcount
+        for row in rows:
+            self.append_event(
+                row["id"], "job.failed", payload={"error": "Interrupted by restart"}
+            )
+        return len(rows)
 
     # -- pallets --------------------------------------------------------
 
@@ -205,6 +222,61 @@ class Database:
                 f"UPDATE items SET {assignments} WHERE id = ?",
                 (*fields.values(), item_id),
             )
+
+    # -- job events -----------------------------------------------------
+
+    def append_event(
+        self,
+        job_id: str,
+        event_type: str,
+        item_id: str | None = None,
+        payload: dict | None = None,
+    ) -> dict:
+        """Append one event, assigning the next per-job event id.
+
+        Single-writer safe: only the job worker appends events for a job,
+        and the id assignment + insert run in one transaction.
+        """
+        now = utcnow()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(event_id), 0) AS m FROM job_events WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+            event_id = int(row["m"]) + 1
+            conn.execute(
+                "INSERT INTO job_events (job_id, event_id, event_type, item_id,"
+                " created_at, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+                (job_id, event_id, event_type, item_id, now, json.dumps(payload or {})),
+            )
+        return {
+            "id": event_id,
+            "job_id": job_id,
+            "event_type": event_type,
+            "item_id": item_id,
+            "created_at": now,
+            "payload": payload or {},
+        }
+
+    def events_after(self, job_id: str, after_id: int, limit: int = 100) -> list[dict]:
+        """Return events with id > after_id, in id order (replay window)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM job_events WHERE job_id = ? AND event_id > ?"
+                " ORDER BY event_id LIMIT ?",
+                (job_id, after_id, limit),
+            ).fetchall()
+            return [
+                {
+                    "id": r["event_id"],
+                    "job_id": r["job_id"],
+                    "event_type": r["event_type"],
+                    "item_id": r["item_id"],
+                    "created_at": r["created_at"],
+                    "payload": json.loads(r["payload_json"] or "{}"),
+                }
+                for r in rows
+            ]
 
 
 def _encode(value: object) -> object:

@@ -18,6 +18,10 @@ raises `ProviderUnavailable` (fallback covers it). Live inference unverified.
 ## Layout
 
 - `backend/app/main.py` — app factory, lifespan (job store + worker), router wiring.
+- SSE: `GET /jobs/{id}/events` tails the persisted `job_events` log (SQLite
+  source of truth, bounded polling); emit via `JobStore.emit_event()` only
+  after the described state commits; every terminal job ends with exactly
+  one terminal event (`job.completed`/`job.failed`).
 - `backend/app/config.py` — settings from env / `.env`.
 - `backend/app/routes/` — thin route handlers.
 - `backend/app/schemas/` — request/response models (contract source of truth, server side).

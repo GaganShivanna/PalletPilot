@@ -1,8 +1,15 @@
-"""End-to-end pipeline: video -> frames -> detection -> identification -> photos -> listings.
+"""End-to-end pipeline: video -> frames -> detection -> per-item loop.
+
+Each product runs identification -> photos -> listing -> SQLite insert
+before the next product starts, so finished items are readable via the
+item endpoints while later items still process. Status names the current
+activity and repeats per item (see docs/FRONTEND_HANDOFF.md).
 
 Per-item failures (identification errors, photo errors) degrade that item to
 a reviewable draft — they never fail the whole pallet. Transient provider
-errors are retried per ``settings.provider_max_retries``.
+errors are retried per ``settings.provider_max_retries``. A stage-level
+failure aborts the job but preserves already-inserted items; failed jobs
+are not automatically resumable.
 """
 
 import logging
@@ -58,6 +65,7 @@ def run_pipeline(job_id: str, store: JobStore, settings: Settings) -> None:
     providers = get_providers(settings)
     pallet = store.db.get_pallet_for_job(job_id)
     pallet_id = pallet["id"] if pallet else None
+    store.emit_event(job_id, "job.started", payload={"video_filename": job.video_filename})
 
     store.update(job_id, status=JobStatus.sampling_frames)
     frames = sample_frames(
@@ -67,23 +75,22 @@ def run_pipeline(job_id: str, store: JobStore, settings: Settings) -> None:
 
     store.update(job_id, status=JobStatus.segmenting)
     products = providers.segmentation.detect(frames, job_dir / "masks")
+    store.emit_event(job_id, "segmentation.completed", payload={"track_count": len(products)})
 
-    store.update(job_id, status=JobStatus.identifying)
-    identified = [
-        (p, identify_with_fallback(p, providers, settings.provider_max_retries)) for p in products
-    ]
-
-    store.update(job_id, status=JobStatus.generating_photos)
-    photos = {
-        p.item_id: generate_product_photos(p, job_dir / "photos", providers.photos)
-        for p, _ in identified
-    }
-
-    store.update(job_id, status=JobStatus.generating_listings)
+    # Per-item loop: identify -> photos -> listing -> insert for one product
+    # before starting the next, so finished items are visible mid-job.
+    # Status names the current activity and repeats for every item.
     listings = []
-    for product, identification in identified:
+    for product in products:
+        store.update(job_id, status=JobStatus.identifying)
+        identification = identify_with_fallback(product, providers, settings.provider_max_retries)
+
+        store.update(job_id, status=JobStatus.generating_photos)
+        photo_paths = generate_product_photos(product, job_dir / "photos", providers.photos)
+
+        store.update(job_id, status=JobStatus.generating_listings)
         stored_id = f"{job_id}:{product.item_id}"
-        urls = [f"/jobs/{job_id}/files/{p.relative_to(job_dir).as_posix()}" for p in photos[product.item_id]]
+        urls = [f"/jobs/{job_id}/files/{p.relative_to(job_dir).as_posix()}" for p in photo_paths]
         original_url = f"/jobs/{job_id}/files/{Path(product.frame_path).relative_to(job_dir).as_posix()}"
         item = draft_item(
             product,
@@ -96,6 +103,10 @@ def run_pipeline(job_id: str, store: JobStore, settings: Settings) -> None:
             original_image_url=original_url,
         )
         store.db.insert_item(item.model_dump(exclude={"created_at", "updated_at"}))
+        # insert_item commits before returning: the row is visible whenever
+        # this event is delivered.
+        store.emit_event(job_id, "listing.ready", item_id=stored_id, payload={"item_id": stored_id})
         listings.append(item_to_listing(item))
 
     store.update(job_id, status=JobStatus.completed, listings=listings)
+    store.emit_event(job_id, "job.completed", payload={"item_count": len(listings)})

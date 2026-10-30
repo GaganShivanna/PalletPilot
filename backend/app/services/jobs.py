@@ -55,6 +55,16 @@ class JobStore:
     def all(self) -> list[Job]:
         return [_row_to_job(row) for row in self.db.all_jobs()]
 
+    def emit_event(
+        self,
+        job_id: str,
+        event_type: str,
+        item_id: str | None = None,
+        payload: dict | None = None,
+    ) -> dict:
+        """Append one SSE event to the job's persisted event log."""
+        return self.db.append_event(job_id, event_type, item_id, payload)
+
     def update(
         self,
         job_id: str,
@@ -109,5 +119,10 @@ class JobQueue:
             except Exception as exc:
                 log.exception("Job %s failed", job_id)
                 self.store.update(job_id, status=JobStatus.failed, error=str(exc))
+                try:
+                    self.store.emit_event(job_id, "job.failed", payload={"error": str(exc)})
+                except Exception:
+                    # Never let event emission kill the queue pump.
+                    log.warning("Failed to emit job.failed for %s", job_id, exc_info=True)
             finally:
                 self._queue.task_done()

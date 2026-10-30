@@ -73,6 +73,10 @@ List jobs (newest first) or one job. Poll `GET /jobs/{id}` until
 
 Status flow: `queued → sampling_frames → segmenting → identifying →
 generating_photos → generating_listings → completed` (or `failed` with `error`).
+Status names the *current activity*: the `identifying →
+generating_photos → generating_listings` sequence repeats for every item,
+and finished items are already readable via the item endpoints while later
+items still process.
 
 Completed job (truncated):
 
@@ -94,7 +98,65 @@ Completed job (truncated):
 ```
 
 Failed job: `{ …, "status": "failed", "error": "Could not open video: video.mp4" }`.
-Unknown id: `404 { "detail": "Job not found" }`.
+Items finished before the failure stay readable; failed jobs are not
+automatically resumable (re-running would reuse the same item ids).
+Unknown id: `404 { "Detail": "Job not found" }`.
+
+### `GET /jobs/{id}/events` → 200 (`text/event-stream`)
+
+Server-Sent Events for progressive updates. Polling `GET /jobs/{id}` keeps
+working — SSE is additive. Every `listing.ready` is emitted only after its
+row commits, so fetching the item on receipt always succeeds.
+
+Event frames (`id` starts at 1 per job, strictly increasing):
+
+```text
+id: 1
+event: job.started
+data: {"id":1,"job_id":"abc123…","event_type":"job.started","item_id":null,"created_at":"2026-10-30T…","payload":{"video_filename":"video.mp4"}}
+
+id: 2
+event: segmentation.completed
+data: {"id":2,"job_id":"abc123…","event_type":"segmentation.completed","item_id":null,"created_at":"2026-10-30T…","payload":{"track_count":3}}
+
+id: 3
+event: listing.ready
+data: {"id":3,"job_id":"abc123…","event_type":"listing.ready","item_id":"abc123…:item_0","created_at":"2026-10-30T…","payload":{"item_id":"abc123…:item_0"}}
+
+id: 6
+event: job.completed
+data: {"id":6,"job_id":"abc123…","event_type":"job.completed","item_id":null,"created_at":"2026-10-30T…","payload":{"item_count":3}}
+```
+
+`job.failed` carries `payload: {"error": "…"}`. Zero-detection jobs complete
+normally with `track_count`/`item_count` 0 and no `listing.ready`. The server
+closes the stream after the terminal event; idle connections get `: keepalive`
+comments (~15s). Unknown id: `404` (JSON, not a stream).
+
+Recommended client flow:
+
+1. `POST /jobs`, then open the stream and `GET /pallets/{id}/items` once for
+   the initial snapshot (covers the gap between upload and stream attach).
+2. On each `listing.ready`, re-fetch `GET /pallets/{id}/items` (or
+   `GET /items/{item_id}`) — events carry ids, not full records.
+3. On `job.completed`, re-fetch items + summary once more, then close.
+   On `job.failed`, show `payload.error`; already-received items stay valid.
+4. Reconnects: the client library resends `Last-Event-ID` automatically and
+   the server replays missed events. Delivery is at-least-once per
+   connection — deduplicate by `id`.
+
+Browser example:
+
+```js
+const src = new EventSource(`/jobs/${jobId}/events`);
+src.addEventListener("listing.ready", (e) => refreshItems(JSON.parse(e.data).item_id));
+src.addEventListener("job.completed", () => { refreshAll(); src.close(); });
+src.addEventListener("job.failed", (e) => { showError(JSON.parse(e.data).payload.error); src.close(); });
+```
+
+SwiftUI note: `EventSource` is browser-only; a SwiftUI client needs an SSE
+client library or a manual streaming-`URLSession` implementation that parses
+`id:`/`event:`/`data:` frames and sends `Last-Event-ID` on reconnect.
 
 ### `GET /jobs/{id}/files/{path}` → 200 (binary)
 

@@ -16,6 +16,11 @@ Last updated: 2026-10-30.
   financial estimates, photo fallback, per-item failure degradation with
   transient retry. Contract: `docs/FRONTEND_HANDOFF.md` + `docs/openapi.json`.
   Stubs remaining: real SAM / Muse Spark / Muse Image adapters.
+- Phase B SSE (2026-10-30, `feat/progressive-processing`): persisted
+  per-job event log (`job_events` table) + `GET /jobs/{id}/events`
+  (replay, `Last-Event-ID` resume, keepalives, close-on-terminal).
+  Events: `job.started`, `segmentation.completed`, `listing.ready`
+  (post-commit), `job.completed`, `job.failed`. REST contract unchanged.
 - Backend+AI integration (2026-10-30, `integration/backend-ai`): wired the
   AI engineer's hosted SAM segmentation (`app/providers/sam_*.py`) and Muse
   Spark identification (`app/providers/real.py`) behind the existing
@@ -43,9 +48,10 @@ Last updated: 2026-10-30.
 
 ## Test status
 
-- Backend: 44/44 pytest pass (25 Phase 1+2, 13 AI-adapter HTTP-boundary,
-  6 condition-mapping). Mock e2e over the full ASGI stack still green
-  (7/7 Phase 2). Live TCP/uds serving could not be verified in-session:
+- Backend: 57/57 pytest pass (25 Phase 1+2, 13 AI-adapter HTTP-boundary,
+  6 condition-mapping, 1 progressive-visibility, 12 SSE events). Mock e2e
+  over the full ASGI stack still green (7/7 Phase 2). Live TCP/uds serving
+  could not be verified in-session:
   the sandbox denies all socket binds (uvicorn boots through "Application
   startup complete", then fails at bind). Recommend one unsandboxed run:
   `cd backend && .venv/bin/uvicorn app.main:app`.
