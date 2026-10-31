@@ -3,15 +3,15 @@
 Feature and module index for PalletPilot. Read this before exploring
 unfamiliar code. Verify entries against source; the map may lag the tree.
 
-Last updated: 2026-10-30. State: backend Phase 2 + AI integration done (mock default, hosted SAM/Muse Spark wired, Muse Image stub); iOS not started.
+Last updated: 2026-10-31. State: backend Phase 2 + AI integration done (mock default, hosted SAM/Muse Spark wired, Muse Image stub); iOS Phase 1 + upload/processing scaffolded, SSE/inventory pending.
 
 ## Features
 
 - Video-to-listings job (backend): `POST /jobs` upload -> `app/services/jobs.py`
   queue -> `app/services/pipeline.py` (frames -> provider segmentation ->
   identification -> photos w/ fallback -> fixture pricing -> listing drafts ->
-  item persistence). All mock, no external calls.
-- Pallets: `POST/GET /pallets`, `GET /pallets/{id}/items`, `PATCH /items/{id}`,
+  item persistence). Mock default; hosted SAM/Muse Spark behind `AI_PROVIDER`.
+- Pallets: `POST /pallets`, `GET /pallets/{id}/items`, `PATCH /items/{id}`,
   `GET /pallets/{id}/export` (CSV). Financial summaries via
   `app/services/financials.py` (estimates; unpriced items excluded).
 - Provider interface: `app/providers/` (base contracts, mock, factory,
@@ -22,11 +22,13 @@ Last updated: 2026-10-30. State: backend Phase 2 + AI integration done (mock def
 
 ## Planned layout
 
-- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Not scaffolded.
+- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing:
+  `.xcodeproj`, `PalletPilot/{App,Core/{…},Features/{Home,Upload,Processing},Services/{Health,Pallet,Job}}`,
+  `PalletPilotTests/`. Inventory/item-edit/profit/export not built yet.
 - `backend/` — FastAPI service (see `backend/AGENTS.md`).
   - `app/routes/` — `health.py` (`GET /health`), `jobs.py` (`POST/GET /jobs`,
     `GET /jobs/{id}`, `GET /jobs/{id}/events` (SSE), `GET /jobs/{id}/files/{path}`), `pallets.py`
-    (`POST/GET /pallets`, `GET /pallets/{id}/items`, `GET …/export`),
+    (`POST /pallets`, `GET /pallets/{id}/items`, `GET …/export`),
     `items.py` (`GET/PATCH /items/{id}`).
   - `app/schemas/` — `jobs.py` (Job, JobStatus), `job_events.py` (JobEvent,
     JobEventType), `listings.py` (Listing, Price),
@@ -69,9 +71,13 @@ Last updated: 2026-10-30. State: backend Phase 2 + AI integration done (mock def
   `test_job_events.py` (SSE: order/replay/resume/failure/disconnect);
   pytest; command in `backend/AGENTS.md`.
 - `docs/FRONTEND_HANDOFF.md`, `docs/openapi.json` — client integration contract.
+- `ios/PalletPilotTests/` — contract decoding (Swift Testing) + networking/VM (XCTest).
+- `docs/ios/` — iOS integration specs from backend audit: `BACKEND_API_AUDIT.md`,
+  `API_CONTRACTS.md`, `USER_FLOW.md`, `INTEGRATION_GAPS.md`. Swift scaffold in
+  `ios/PalletPilot/` (Phase 1 + upload/processing flows).
 - `docs/AI_INTEGRATION.md` — real AI adapters, config, flow, limitations.
 
 ## Needs verification
 
-- Rebuild the Features section once the first modules land.
-- Confirm SwiftUI version when scaffolding iOS.
+- `docs/ios/` specs predate SSE + hosted AI (see header notes); refresh before extending.
+- Confirm one iOS simulator `xcodebuild test` run outside the sandbox.
