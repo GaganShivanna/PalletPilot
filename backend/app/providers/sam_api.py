@@ -1,4 +1,4 @@
-"""SAM video requests using the existing sampled-frame provider contract."""
+"""SAM video segmentation with manual or automatic concept discovery."""
 
 import base64
 import json
@@ -15,6 +15,7 @@ from app.providers.base import (
     ProviderTimeout,
     ProviderUnavailable,
 )
+from app.providers.concept_discovery import discover_concepts
 from app.providers.sam_output import parse_completed_sam_output
 from app.providers.sam_products import build_sam_products
 
@@ -24,7 +25,7 @@ def encode_video(
     destination: Path,
     fps: float,
 ) -> Path:
-    """Encode frames in their supplied order, preserving frame indices."""
+    """Encode frames in order while preserving their indices."""
     if not frame_paths:
         raise ProviderError("No source frames were supplied to SAM.")
 
@@ -35,7 +36,7 @@ def encode_video(
 
     height, width = first.shape[:2]
 
-    # Avoid silent dimension changes by the video encoder.
+    # Prevent silent dimension changes by the encoder.
     if width % 2 or height % 2:
         raise ProviderError(
             "SAM input frames must have even width and height."
@@ -67,12 +68,14 @@ def encode_video(
     finally:
         writer.release()
 
-    # Verify that the encoded clip still matches our source-frame list.
+    # Check that the encoded video matches the supplied source frames.
     capture = cv2.VideoCapture(str(destination))
 
     try:
         if not capture.isOpened():
-            raise ProviderError("The encoded SAM video could not be opened.")
+            raise ProviderError(
+                "The encoded SAM video could not be opened."
+            )
 
         count = 0
 
@@ -83,12 +86,16 @@ def encode_video(
                 break
 
             if frame.shape[:2] != (height, width):
-                raise ProviderError("Video encoding changed frame dimensions.")
+                raise ProviderError(
+                    "Video encoding changed frame dimensions."
+                )
 
             count += 1
 
         if count != len(frame_paths):
-            raise ProviderError("Video encoding changed the frame count.")
+            raise ProviderError(
+                "Video encoding changed the frame count."
+            )
     finally:
         capture.release()
 
@@ -100,20 +107,23 @@ def request_sam_output(
     concept: str,
     settings: Settings,
 ) -> str:
-    """Make one non-streaming SAM request and return completed output text."""
+    """Make one SAM request and return successfully completed output text."""
     secret = settings.muse_api_key
     api_key = secret.get_secret_value().strip() if secret else ""
 
     if not api_key:
         raise ProviderUnavailable("SAM requires MUSE_API_KEY.")
 
-    # Conservative local limit for this initial inline-video adapter.
+    # Conservative local limit for the inline-video adapter.
     if video_path.stat().st_size > 20 * 1024 * 1024:
         raise ProviderError(
-            "The sampled SAM clip exceeds 20 MB. Use a shorter test video."
+            "The sampled SAM clip exceeds 20 MB. "
+            "Use a shorter test video."
         )
 
-    encoded = base64.b64encode(video_path.read_bytes()).decode("ascii")
+    encoded = base64.b64encode(
+        video_path.read_bytes()
+    ).decode("ascii")
 
     payload = {
         "model": settings.sam_model,
@@ -127,10 +137,15 @@ def request_sam_output(
                 "type": "message",
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": concept},
+                    {
+                        "type": "input_text",
+                        "text": concept,
+                    },
                     {
                         "type": "input_video",
-                        "video_url": f"data:video/mp4;base64,{encoded}",
+                        "video_url": (
+                            f"data:video/mp4;base64,{encoded}"
+                        ),
                     },
                 ],
             }
@@ -148,13 +163,17 @@ def request_sam_output(
     )
 
     try:
-        with urlopen(request, timeout=settings.sam_timeout_s) as response:
+        with urlopen(
+            request,
+            timeout=settings.sam_timeout_s,
+        ) as response:
             result = json.load(response)
 
     except HTTPError as exc:
         if exc.code in {401, 403, 404}:
             raise ProviderUnavailable(
-                f"SAM returned HTTP {exc.code}. Check model access and credentials."
+                f"SAM returned HTTP {exc.code}. "
+                "Check model access and credentials."
             ) from None
 
         raise ProviderError(
@@ -163,7 +182,9 @@ def request_sam_output(
         ) from None
 
     except TimeoutError:
-        raise ProviderTimeout("SAM processing timed out.") from None
+        raise ProviderTimeout(
+            "SAM processing timed out."
+        ) from None
 
     except URLError:
         raise ProviderError(
@@ -172,7 +193,9 @@ def request_sam_output(
         ) from None
 
     except ValueError:
-        raise ProviderError("SAM returned invalid JSON.") from None
+        raise ProviderError(
+            "SAM returned invalid JSON."
+        ) from None
 
     try:
         if result["status"] != "completed":
@@ -197,13 +220,21 @@ def request_sam_output(
                     texts.append(text)
 
         if len(texts) > 1:
-            raise ValueError("Unexpected multiple output-text lanes.")
+            raise ValueError(
+                "Unexpected multiple output-text lanes."
+            )
 
         return texts[0] if texts else ""
 
-    except (KeyError, TypeError, ValueError, AttributeError):
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        AttributeError,
+    ):
         raise ProviderError(
-            "SAM did not return a valid, completed segmentation response."
+            "SAM did not return a valid, completed "
+            "segmentation response."
         ) from None
 
 
@@ -212,26 +243,42 @@ def detect_with_sam(
     out_dir: Path,
     settings: Settings,
 ) -> list[DetectedProduct]:
-    """Request each configured concept and build reviewable product crops."""
+    """Discover concepts, run SAM and build reviewable product crops.
+
+    A non-empty SAM_CONCEPTS setting overrides automatic discovery.
+    Each concept gets a separate SAM request and track-ID namespace.
+    """
     secret = settings.muse_api_key
 
     if secret is None or not secret.get_secret_value().strip():
         raise ProviderUnavailable("SAM requires MUSE_API_KEY.")
 
-    concepts = list(
-        dict.fromkeys(
-            value.strip()
-            for value in settings.sam_concepts.split(",")
-            if value.strip()
-        )
-    )
-
-    if not concepts or len(concepts) > 5:
-        raise ProviderUnavailable(
-            "Set SAM_CONCEPTS to 1–5 comma-separated product types."
-        )
-
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if settings.sam_concepts.strip():
+        concepts = list(
+            dict.fromkeys(
+                value.strip()
+                for value in settings.sam_concepts.split(",")
+                if value.strip()
+            )
+        )
+
+        if not 1 <= len(concepts) <= 5:
+            raise ProviderUnavailable(
+                "SAM_CONCEPTS must contain 1–5 "
+                "comma-separated product types."
+            )
+    else:
+        concepts = discover_concepts(
+            frame_paths,
+            out_dir,
+            settings,
+        )
+
+    if not concepts:
+        # Valid empty discovery result: no SAM calls are necessary.
+        return []
 
     video_path = encode_video(
         frame_paths,
@@ -242,10 +289,15 @@ def detect_with_sam(
     products = []
 
     for index, concept in enumerate(concepts):
-        output_text = request_sam_output(video_path, concept, settings)
+        output_text = request_sam_output(
+            video_path,
+            concept,
+            settings,
+        )
 
-        # Preserve evidence for debugging live runs.
-        (out_dir / f"sam_response_{index}.txt").write_text(
+        # Preserve the original response for debugging and evaluation.
+        response_path = out_dir / f"sam_response_{index}.txt"
+        response_path.write_text(
             output_text,
             encoding="utf-8",
         )
