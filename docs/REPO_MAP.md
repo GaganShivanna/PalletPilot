@@ -71,6 +71,7 @@ Last updated: 2026-10-31. State: backend Phase 2 + AI integration done (mock def
   `test_job_events.py` (SSE: order/replay/resume/failure/disconnect);
   pytest; command in `backend/AGENTS.md`.
 - `docs/FRONTEND_HANDOFF.md`, `docs/openapi.json` — client integration contract.
+- `docs/IOS_INTEGRATION_TASKS.md` — iOS task handoff (SSE workflow, screens, acceptance).
 - `ios/PalletPilotTests/` — contract decoding (Swift Testing) + networking/VM (XCTest).
 - `docs/ios/` — iOS integration specs from backend audit: `BACKEND_API_AUDIT.md`,
   `API_CONTRACTS.md`, `USER_FLOW.md`, `INTEGRATION_GAPS.md`. Swift scaffold in
