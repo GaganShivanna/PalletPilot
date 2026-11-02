@@ -34,6 +34,14 @@ struct HomeView: View {
             }
             .buttonStyle(.borderedProminent)
 
+            Button {
+                router.navigate(to: .capture(palletId: nil))
+            } label: {
+                Label("Open camera", systemImage: "camera.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
             Spacer()
         }
         .padding()

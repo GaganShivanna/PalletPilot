@@ -244,9 +244,12 @@ struct FakeHealthService: HealthServiceProtocol {
     }
 }
 
-/// Fake pallet service returning a canned pallet.
+/// Fake pallet service returning canned pallet data.
 final class FakePalletService: PalletServiceProtocol {
     var result: Result<Pallet, Error>
+    var summaryResult: Result<PalletSummary, Error>?
+    var itemsResult: Result<[Item], Error>?
+    var exportResult: Result<Data, Error>?
     private(set) var created: [PalletCreate] = []
 
     init(result: Result<Pallet, Error>) {
@@ -256,6 +259,48 @@ final class FakePalletService: PalletServiceProtocol {
     func createPallet(_ create: PalletCreate) async throws -> Pallet {
         created.append(create)
         return try result.get()
+    }
+
+    func getSummary(palletId: String) async throws -> PalletSummary {
+        try summaryResult?.get() ?? { throw APIError.invalidRequest("unset summary") }()
+    }
+
+    func listItems(palletId: String) async throws -> [Item] {
+        try itemsResult?.get() ?? { throw APIError.invalidRequest("unset items") }()
+    }
+
+    func exportCSV(palletId: String) async throws -> Data {
+        try exportResult?.get() ?? { throw APIError.invalidRequest("unset export") }()
+    }
+}
+
+/// Fake item service for detail/edit tests.
+final class FakeItemService: ItemServiceProtocol {
+    var item: Item?
+    var error: Error?
+    private(set) var patched: [(id: String, patch: ItemPatch)] = []
+
+    init(item: Item? = nil, error: Error? = nil) {
+        self.item = item
+        self.error = error
+    }
+
+    func getItem(id: String) async throws -> Item {
+        if let error { throw error }
+        guard let item else { throw APIError.invalidRequest("unset item") }
+        return item
+    }
+
+    func patchItem(id: String, patch: ItemPatch) async throws -> Item {
+        if let error { throw error }
+        patched.append((id, patch))
+        guard var item else { throw APIError.invalidRequest("unset item") }
+        if let title = patch.title { item.title = title }
+        if let needsReview = patch.needsReview { item.needsReview = needsReview }
+        if patch.clearsPrice { item.suggestedPrice = nil }
+        else if let price = patch.suggestedPrice { item.suggestedPrice = price }
+        self.item = item
+        return item
     }
 }
 

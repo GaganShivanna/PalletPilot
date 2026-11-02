@@ -39,6 +39,11 @@ final class UploadViewModel: ObservableObject {
         return video != nil
     }
 
+    func setLoadFailure(_ message: String) {
+        video = nil
+        state = .failed(message: message)
+    }
+
     func setVideo(data: Data, fileExtension: String) {
         do {
             video = try UploadVideo(data: data, fileExtension: fileExtension)

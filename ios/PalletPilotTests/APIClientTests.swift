@@ -297,4 +297,118 @@ final class APIClientTests: XCTestCase {
         let state = await viewModel.state
         XCTAssertEqual(state, .timedOut)
     }
+
+    // MARK: - Design screens (inventory / detail / summary / export)
+
+    private func testItems() throws -> [Item] {
+        let decoder = testDecoder()
+        return try [
+            decoder.decode(Item.self, from: Data(Fixtures.itemPriced.utf8)),
+            decoder.decode(Item.self, from: Data(Fixtures.itemUnpriced.utf8)),
+        ]
+    }
+
+    private func testSummary() throws -> PalletSummary {
+        try testDecoder().decode(PalletSummary.self, from: Data(Fixtures.palletSummary.utf8))
+    }
+
+    func testPatchSendsPatchMethodWithSnakeCaseKeys() async throws {
+        MockURLProtocol.queued = [.init(data: Data(Fixtures.itemPriced.utf8), statusCode: 200)]
+        var patch = ItemPatch()
+        patch.title = "Retitled"
+        patch.needsReview = false
+        let item: Item = try await client.patch(
+            "/items/\(Fixtures.jobId):item_0", body: patch, as: Item.self)
+        XCTAssertEqual(item.id, "\(Fixtures.jobId):item_0")
+        let request = try XCTUnwrap(MockURLProtocol.lastRequest)
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertFalse(request.url?.absoluteString.hasSuffix("/") ?? true)
+        let body = try XCTUnwrap(RecordedBody.string(request))
+        XCTAssertTrue(body.contains("\"title\":\"Retitled\""))
+        XCTAssertTrue(body.contains("\"needs_review\":false"))
+        XCTAssertFalse(body.contains("suggested_price"))
+    }
+
+    func testInventoryViewModelLoadsAndFilters() async throws {
+        let pallet = try testDecoder().decode(Pallet.self, from: Data(Fixtures.pallet.utf8))
+        let service = FakePalletService(result: .success(pallet))
+        service.itemsResult = .success(try testItems())
+        service.summaryResult = .success(try testSummary())
+        let viewModel = await MainActor.run {
+            InventoryViewModel(palletId: Fixtures.palletId, palletService: service)
+        }
+        await viewModel.load()
+        let state = await viewModel.state
+        XCTAssertEqual(state, .loaded)
+        let needsReviewCount = await viewModel.needsReviewCount
+        XCTAssertEqual(needsReviewCount, 2)
+        let noPriceCount = await viewModel.noPriceCount
+        XCTAssertEqual(noPriceCount, 1)
+        let allTitle = await viewModel.filterTitle(.all)
+        XCTAssertEqual(allTitle, "All 2")
+        await MainActor.run { viewModel.filter = .noPrice }
+        let noPriceItems = await viewModel.filteredItems
+        XCTAssertEqual(noPriceItems.count, 1)
+        await MainActor.run { viewModel.filter = .needsReview }
+        let reviewItems = await viewModel.filteredItems
+        XCTAssertEqual(reviewItems.count, 2)
+    }
+
+    func testItemDetailViewModelSaveSendsChangedKeys() async throws {
+        let service = FakeItemService(item: try testDecoder().decode(
+            Item.self, from: Data(Fixtures.itemPriced.utf8)))
+        let viewModel = await MainActor.run {
+            ItemDetailViewModel(itemId: "\(Fixtures.jobId):item_0", itemService: service)
+        }
+        await viewModel.load()
+        let loadedState = await viewModel.state
+        XCTAssertEqual(loadedState, .loaded)
+        await MainActor.run {
+            viewModel.title = "Retitled drill"
+            viewModel.markReviewed = true
+        }
+        await viewModel.save()
+        let savedState = await viewModel.state
+        XCTAssertEqual(savedState, .loaded)
+        XCTAssertEqual(service.patched.count, 1)
+        XCTAssertEqual(service.patched.first?.patch.title, "Retitled drill")
+        XCTAssertEqual(service.patched.first?.patch.needsReview, false)
+        XCTAssertNil(service.patched.first?.patch.suggestedPrice)
+    }
+
+    func testSummaryViewModelRanksTopItemsByPrice() async throws {
+        let pallet = try testDecoder().decode(Pallet.self, from: Data(Fixtures.pallet.utf8))
+        let service = FakePalletService(result: .success(pallet))
+        service.summaryResult = .success(try testSummary())
+        service.itemsResult = .success(try testItems())
+        let viewModel = await MainActor.run {
+            SummaryViewModel(palletId: Fixtures.palletId, palletService: service)
+        }
+        await viewModel.load()
+        let summaryState = await viewModel.state
+        XCTAssertEqual(summaryState, .loaded)
+        let top = await viewModel.topItems
+        XCTAssertEqual(top.count, 1)
+        XCTAssertEqual(top.first?.suggestedPrice, 45.0)
+        let feePercent = await viewModel.feeRatePercent
+        XCTAssertEqual(feePercent, 13)
+    }
+
+    func testExportViewModelCounts() async throws {
+        let pallet = try testDecoder().decode(Pallet.self, from: Data(Fixtures.pallet.utf8))
+        let service = FakePalletService(result: .success(pallet))
+        service.itemsResult = .success(try testItems())
+        let viewModel = await MainActor.run {
+            ExportViewModel(palletId: Fixtures.palletId, palletService: service)
+        }
+        await viewModel.load()
+        let exportState = await viewModel.state
+        XCTAssertEqual(exportState, .loaded)
+        let reviewed = await viewModel.reviewedCount
+        XCTAssertEqual(reviewed, 0)
+        let unreviewed = await viewModel.unreviewedCount
+        XCTAssertEqual(unreviewed, 2)
+        let donate = await viewModel.donateCount
+        XCTAssertEqual(donate, 1)
+    }
 }

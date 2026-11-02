@@ -21,9 +21,10 @@ Last updated: 2026-10-28. State: backend Phase 2 done (mock end-to-end); iOS not
 
 ## Planned layout
 
-- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing:
-  `.xcodeproj`, `PalletPilot/{App,Core/{…},Features/{Home,Upload,Processing},Services/{Health,Pallet,Job}}`,
-  `PalletPilotTests/`. Inventory/item-edit/profit/export not built yet.
+- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing +
+  design screens: `.xcodeproj`, `PalletPilot/{App,Core/{…,Components/DesignComponents,Theme},
+  Features/{Home,Upload,Processing,Capture,Inventory,ItemDetail,Summary,Export},
+  Services/{Health,Pallet,Job,Item}}`, `PalletPilotTests/`.
 - `backend/` — FastAPI service (see `backend/AGENTS.md`).
   - `app/routes/` — `health.py` (`GET /health`), `jobs.py` (`POST/GET /jobs`,
     `GET /jobs/{id}`, `GET /jobs/{id}/files/{path}`), `pallets.py`
