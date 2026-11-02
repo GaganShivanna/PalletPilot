@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Photos
 
@@ -46,6 +47,11 @@ final class VideoPickerViewModel: ObservableObject {
         return assets.first { $0.localIdentifier == selectedId }
     }
 
+    /// Backend cap (`backend/app/config.py: max_upload_mb`, default 500).
+    /// Checked before bytes are read so oversized clips fail fast instead of
+    /// spiking upload memory.
+    static let maxUploadBytes = 500 * 1024 * 1024
+
     /// Full file data for the checked video. Matches what `UploadViewModel`
     /// expects: raw bytes plus the file extension for backend validation.
     func loadSelectedData() async throws -> (Data, String) {
@@ -63,8 +69,17 @@ final class VideoPickerViewModel: ObservableObject {
         guard let urlAsset = avAsset as? AVURLAsset else {
             throw VideoPickerError.unreadable
         }
-        let ext = urlAsset.url.pathExtension.lowercased()
-        let data = try Data(contentsOf: urlAsset.url)
+        let fileURL = urlAsset.url
+        if let byteCount = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size]
+            as? NSNumber)?.intValue,
+            byteCount > Self.maxUploadBytes {
+            throw VideoPickerError.tooLarge(maxMB: Self.maxUploadBytes / 1024 / 1024)
+        }
+        let data = try Data(contentsOf: fileURL)
+        if data.count > Self.maxUploadBytes {
+            throw VideoPickerError.tooLarge(maxMB: Self.maxUploadBytes / 1024 / 1024)
+        }
+        let ext = fileURL.pathExtension.lowercased()
         return (data, ext.isEmpty ? "mp4" : ext)
     }
 }
@@ -72,11 +87,13 @@ final class VideoPickerViewModel: ObservableObject {
 enum VideoPickerError: LocalizedError {
     case noSelection
     case unreadable
+    case tooLarge(maxMB: Int)
 
     var errorDescription: String? {
         switch self {
         case .noSelection: return "Check one video first."
         case .unreadable: return "Couldn't read that video file."
+        case .tooLarge(let maxMB): return "That video is over \(maxMB) MB — pick a shorter clip."
         }
     }
 }

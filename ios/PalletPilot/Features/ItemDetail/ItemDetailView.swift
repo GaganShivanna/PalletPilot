@@ -15,6 +15,7 @@ struct ItemDetailView: View {
             AppTheme.groupedBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    statusBanner
                     photoTabs
                     photoCard
                     Text("The item is not redrawn, so buyers see its real condition.")
@@ -32,8 +33,15 @@ struct ItemDetailView: View {
                         .padding(.horizontal, 20)
                     SectionHeader(text: "Price")
                     priceCard
+                        .onChange(of: viewModel.priceText) { viewModel.clearPriceError() }
+                    if let priceError = viewModel.priceError {
+                        Text(priceError)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 20)
+                    }
                     if case .loaded = viewModel.state {
-                        Text("Sold for $32, $35 and $36 in the last 30 days.")
+                        Text(viewModel.priceFootnote)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 20)
@@ -59,6 +67,48 @@ struct ItemDetailView: View {
             }
         }
         .task { await viewModel.load() }
+    }
+
+    @ViewBuilder
+    private var statusBanner: some View {
+        switch viewModel.state {
+        case .loading:
+            HStack {
+                ProgressView()
+                Text("Loading item…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+        case .saving:
+            HStack {
+                ProgressView()
+                Text("Saving…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+        case .failed(let message):
+            VStack(spacing: 8) {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                if viewModel.item == nil {
+                    Button("Retry") { Task { await viewModel.load() } }
+                        .buttonStyle(.bordered)
+                } else {
+                    Button("Try saving again") { Task { await viewModel.save() } }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(.horizontal, 20)
+        case .loaded:
+            EmptyView()
+        }
     }
 
     private var photoTabs: some View {
@@ -94,7 +144,7 @@ struct ItemDetailView: View {
                 if let percent = viewModel.confidencePercent {
                     ConfidenceBadge(text: "\(percent)% sure")
                 }
-                Text("Brand and model printed on the front")
+                Text(viewModel.evidenceLine)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -159,7 +209,7 @@ struct ItemDetailView: View {
             HStack {
                 Text("Source").font(.body)
                 Spacer()
-                Text("eBay sold · median of 3")
+                Text(viewModel.priceSourceLabel)
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
@@ -168,7 +218,7 @@ struct ItemDetailView: View {
             HStack {
                 Text("Price confidence").font(.body)
                 Spacer()
-                Text("Medium")
+                Text(viewModel.priceConfidenceLabel)
                     .font(.body)
                     .foregroundStyle(.secondary)
             }

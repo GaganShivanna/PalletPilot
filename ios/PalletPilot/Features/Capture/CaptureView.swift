@@ -10,10 +10,12 @@ struct CaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: CaptureViewModel
     private let palletId: String?
+    private let jobId: String?
 
-    init(viewModel: CaptureViewModel, palletId: String? = nil) {
+    init(viewModel: CaptureViewModel, palletId: String? = nil, jobId: String? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.palletId = palletId
+        self.jobId = jobId
     }
 
     var body: some View {
@@ -50,6 +52,11 @@ struct CaptureView: View {
             .padding()
         }
         .toolbar(.hidden, for: .navigationBar)
+        .task {
+            if let palletId, let jobId {
+                await viewModel.attach(palletId: palletId, jobId: jobId)
+            }
+        }
         .onDisappear { viewModel.stopRecording() }
     }
 

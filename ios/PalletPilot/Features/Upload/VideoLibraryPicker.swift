@@ -184,16 +184,22 @@ private struct VideoThumbnail: View {
 
     private func load() async {
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
+        // Single delivery: `.opportunistic` invokes the result handler
+        // multiple times, which would resume the continuation twice and
+        // crash. High-quality format delivers exactly once.
+        options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
         let result: UIImage? = await withCheckedContinuation { continuation in
+            var resumed = false
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: CGSize(width: 300, height: 300),
                 contentMode: .aspectFill,
                 options: options
             ) { image, _ in
+                guard !resumed else { return }
+                resumed = true
                 continuation.resume(returning: image)
             }
         }
