@@ -29,9 +29,15 @@ struct ProcessingView: View {
                     .font(.headline).foregroundStyle(.green)
                 Text("\(job.frameCount) frames · \(job.listings.count) draft listings")
                     .font(.subheadline).foregroundStyle(.secondary)
-                Text("Drafts are mock data and need review — inventory browsing arrives in a later phase.")
+                Text("Drafts are mock data and need review — open the inventory to check each item.")
                     .font(.footnote).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                if let palletId {
+                    Button("View inventory") {
+                        router.navigate(to: .inventory(palletId: palletId))
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             case .failed(let message):
                 Label("Processing failed", systemImage: "xmark.circle.fill")
                     .font(.headline).foregroundStyle(.red)

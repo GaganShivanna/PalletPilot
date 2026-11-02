@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// App-wide destinations. Grows per USER_FLOW.md
-/// (inventory, item edit, profit, export).
+/// App-wide destinations per USER_FLOW.md Flow A.
 enum AppRoute: Hashable {
     case home
     case upload
+    case capture(palletId: String?)
     case processing(jobId: String, palletId: String?)
+    case inventory(palletId: String)
+    case itemDetail(itemId: String, palletId: String)
+    case summary(palletId: String)
+    case export(palletId: String)
 }
 
 /// Reusable NavigationStack router. Views navigate via the environment router,
@@ -62,6 +66,10 @@ private struct PreviewStubClient: APIClientProtocol {
     }
 
     func post<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        throw APIError.invalidRequest("Preview stub: no backend (\(path))")
+    }
+
+    func patch<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T {
         throw APIError.invalidRequest("Preview stub: no backend (\(path))")
     }
 

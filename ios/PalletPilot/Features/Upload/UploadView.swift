@@ -1,12 +1,14 @@
-import PhotosUI
 import SwiftUI
 
 /// Upload flow (USER_FLOW.md Flow A): pallet details → video pick → create
 /// pallet → upload → handoff to progress tracking. No inventory UI here.
+///
+/// Video picking is check-then-confirm: the library sheet checks one video
+/// and only hands it over when Select is tapped.
 struct UploadView: View {
     @Environment(\.router) private var router
     @StateObject private var viewModel: UploadViewModel
-    @State private var pickerItem: PhotosPickerItem?
+    @State private var showsLibrary = false
 
     init(viewModel: UploadViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -23,11 +25,15 @@ struct UploadView: View {
             }
 
             Section("Video") {
-                PhotosPicker(selection: $pickerItem, matching: .videos) {
+                Button {
+                    showsLibrary = true
+                } label: {
                     Label("Choose video", systemImage: "film")
                 }
-                .onChange(of: pickerItem) { _, item in
-                    Task { await loadVideo(from: item) }
+                .sheet(isPresented: $showsLibrary) {
+                    VideoLibraryPicker { data, ext in
+                        viewModel.setVideo(data: data, fileExtension: ext)
+                    }
                 }
                 videoStatus
             }
@@ -88,12 +94,4 @@ struct UploadView: View {
         .disabled(!viewModel.canUpload)
     }
 
-    private func loadVideo(from item: PhotosPickerItem?) async {
-        guard let item else { return }
-        guard let data = try? await item.loadTransferable(type: Data.self) else {
-            return
-        }
-        let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "mp4"
-        viewModel.setVideo(data: data, fileExtension: ext)
-    }
 }
