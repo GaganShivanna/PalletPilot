@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     # Financial estimates (labeled as estimates in API responses).
     fee_rate: float = Field(default=0.13, ge=0.0, le=1.0)
 
+    # eBay Browse pricing (blank = skip eBay, use category estimates).
+    ebay_client_id: str = ""
+    ebay_client_secret: SecretStr | None = None
+    ebay_marketplace: str = "EBAY_US"
+    ebay_base_url: str = "https://api.ebay.com"
+
+    # Muse price guesses (off by default: the MUSE_API_KEY also serves
+    # identification, so key presence alone must not enable pricing calls).
+    muse_pricing_enabled: bool = False
+
     data_dir: Path = BACKEND_DIR / "data"
     sample_fps: float = Field(default=3.0, ge=2.0, le=5.0)
     max_frames: int = Field(default=300, gt=0)
