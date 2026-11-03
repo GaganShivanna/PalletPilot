@@ -4,10 +4,11 @@ Subsystem rules for the PalletPilot API service. The root `AGENTS.md` also appli
 
 ## State
 
-Phase 1 done: upload -> frame sampling -> provider segmentation (mock default)
--> stub photos / listings. SQLite metadata (`meta.db`) with restart recovery.
-Real SAM / Muse Spark / Muse Image adapters raise `ProviderUnavailable` until
-integrated; `AI_PROVIDER` selects the provider set (mock default).
+Phase 2 + AI integration done: upload -> frame sampling -> provider
+segmentation (mock default, hosted SAM/Muse Spark available) -> photos w/
+fallback -> listings. SQLite metadata (`meta.db`) with restart recovery.
+`AI_PROVIDER` selects the provider set (mock default); Muse Image still
+raises `ProviderUnavailable` (fallback covers it). Live inference unverified.
 
 ## Stack
 
@@ -17,6 +18,10 @@ integrated; `AI_PROVIDER` selects the provider set (mock default).
 ## Layout
 
 - `backend/app/main.py` — app factory, lifespan (job store + worker), router wiring.
+- SSE: `GET /jobs/{id}/events` tails the persisted `job_events` log (SQLite
+  source of truth, bounded polling); emit via `JobStore.emit_event()` only
+  after the described state commits; every terminal job ends with exactly
+  one terminal event (`job.completed`/`job.failed`).
 - `backend/app/config.py` — settings from env / `.env`.
 - `backend/app/routes/` — thin route handlers.
 - `backend/app/schemas/` — request/response models (contract source of truth, server side).

@@ -1,5 +1,11 @@
 # PalletPilot iOS Integration Gaps
 
+> Integration note (2026-10-31): written against the pre-SSE, mock-only
+> backend. G9 (poll-only) is superseded by `GET /jobs/{job_id}/events`
+> (SSE); G12 (mock-only) is partly superseded by hosted SAM/Muse Spark
+> adapters (`AI_PROVIDER`, mock still default). See
+> `docs/FRONTEND_HANDOFF.md` (SSE section) and `docs/AI_INTEGRATION.md`.
+
 Capabilities the iOS app can need that the backend (branch `backend/scaffold`,
 as audited) does not provide. No speculation below: each gap names the missing
 contract and the client-side consequence. No replacement backend is proposed;
