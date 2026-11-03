@@ -37,6 +37,10 @@ struct ProcessingView: View {
                         router.navigate(to: .inventory(palletId: palletId))
                     }
                     .buttonStyle(.borderedProminent)
+                    Button("Live scan") {
+                        router.navigate(to: .capture(palletId: palletId, jobId: job.id))
+                    }
+                    .buttonStyle(.bordered)
                 }
             case .failed(let message):
                 Label("Processing failed", systemImage: "xmark.circle.fill")

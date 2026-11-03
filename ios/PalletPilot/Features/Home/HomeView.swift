@@ -35,7 +35,7 @@ struct HomeView: View {
             .buttonStyle(.borderedProminent)
 
             Button {
-                router.navigate(to: .capture(palletId: nil))
+                router.navigate(to: .capture(palletId: nil, jobId: nil))
             } label: {
                 Label("Open camera", systemImage: "camera.fill")
                     .frame(maxWidth: .infinity)

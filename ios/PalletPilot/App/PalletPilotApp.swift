@@ -20,8 +20,12 @@ struct PalletPilotApp: App {
                                 viewModel: ProcessingViewModel(container: container, jobId: jobId),
                                 palletId: palletId
                             )
-                        case .capture(let palletId):
-                            CaptureView(viewModel: CaptureViewModel(container: container), palletId: palletId)
+                        case .capture(let palletId, let jobId):
+                            CaptureView(
+                                viewModel: CaptureViewModel(container: container),
+                                palletId: palletId,
+                                jobId: jobId
+                            )
                         case .inventory(let palletId):
                             InventoryView(viewModel: InventoryViewModel(palletId: palletId, container: container))
                         case .itemDetail(let itemId, _):

@@ -411,4 +411,88 @@ final class APIClientTests: XCTestCase {
         let donate = await viewModel.donateCount
         XCTAssertEqual(donate, 1)
     }
+
+    func testExportFilteredCSVDropsUnreviewedRows() {
+        let csv = """
+            item_id,title,description,category,brand,condition,suggested_price,currency,image_url,review_status
+            a1,Drill,,Power Tools,Acme,good,45.0,USD,/f/1.jpg,approved
+            a2,"Box, sealed",,Uncategorized,,unknown,,USD,,needs_review
+            """
+        let filtered = ExportViewModel.filteredCSV(Data((csv + "\n").utf8), includeUnreviewed: false)
+        let text = String(data: filtered, encoding: .utf8) ?? ""
+        XCTAssertTrue(text.contains("a1,Drill"))
+        XCTAssertFalse(text.contains("a2"))
+        XCTAssertTrue(text.hasPrefix("item_id,"))
+        let kept = ExportViewModel.filteredCSV(Data((csv + "\n").utf8), includeUnreviewed: true)
+        XCTAssertEqual(kept, Data((csv + "\n").utf8))
+    }
+
+    func testExportFetchCSVAppliesToggle() async throws {
+        let csv = """
+            item_id,title,description,category,brand,condition,suggested_price,currency,image_url,review_status
+            a1,Drill,,Power Tools,Acme,good,45.0,USD,/f/1.jpg,approved
+            a2,Box,,Uncategorized,,unknown,,USD,,needs_review
+            """ + "\n"
+        let pallet = try testDecoder().decode(Pallet.self, from: Data(Fixtures.pallet.utf8))
+        let service = FakePalletService(result: .success(pallet))
+        service.exportResult = .success(Data(csv.utf8))
+        let viewModel = await MainActor.run {
+            ExportViewModel(palletId: Fixtures.palletId, palletService: service)
+        }
+        await viewModel.fetchCSV()
+        let offData = await viewModel.csvData
+        let off = String(data: try XCTUnwrap(offData), encoding: .utf8) ?? ""
+        XCTAssertTrue(off.contains("a1,Drill"))
+        XCTAssertFalse(off.contains("a2"))
+        await MainActor.run { viewModel.includeUnreviewed = true }
+        await viewModel.fetchCSV()
+        let onData = await viewModel.csvData
+        let on = String(data: try XCTUnwrap(onData), encoding: .utf8) ?? ""
+        XCTAssertTrue(on.contains("a2"))
+        let count = await viewModel.exportedCount
+        XCTAssertEqual(count, 2)
+    }
+
+    func testItemDetailSaveRejectsInvalidPrice() async throws {
+        let service = FakeItemService(item: try testDecoder().decode(
+            Item.self, from: Data(Fixtures.itemPriced.utf8)))
+        let viewModel = await MainActor.run {
+            ItemDetailViewModel(itemId: "\(Fixtures.jobId):item_0", itemService: service)
+        }
+        await viewModel.load()
+        await MainActor.run { viewModel.priceText = "abc" }
+        await viewModel.save()
+        let abcError = await viewModel.priceError
+        XCTAssertNotNil(abcError)
+        XCTAssertTrue(service.patched.isEmpty)
+    }
+
+    func testItemDetailSaveRejectsNegativePrice() async throws {
+        let service = FakeItemService(item: try testDecoder().decode(
+            Item.self, from: Data(Fixtures.itemPriced.utf8)))
+        let viewModel = await MainActor.run {
+            ItemDetailViewModel(itemId: "\(Fixtures.jobId):item_0", itemService: service)
+        }
+        await viewModel.load()
+        await MainActor.run { viewModel.priceText = "-5" }
+        await viewModel.save()
+        let negativeError = await viewModel.priceError
+        XCTAssertNotNil(negativeError)
+        XCTAssertTrue(service.patched.isEmpty)
+    }
+
+    func testItemDetailLabelsComeFromServer() async throws {
+        let service = FakeItemService(item: try testDecoder().decode(
+            Item.self, from: Data(Fixtures.itemPriced.utf8)))
+        let viewModel = await MainActor.run {
+            ItemDetailViewModel(itemId: "\(Fixtures.jobId):item_0", itemService: service)
+        }
+        await viewModel.load()
+        let evidence = await viewModel.evidenceLine
+        let source = await viewModel.priceSourceLabel
+        let confidence = await viewModel.priceConfidenceLabel
+        XCTAssertEqual(evidence, "mock identification: not verified against imagery")
+        XCTAssertEqual(source, "Estimate · mock_fixture · asking")
+        XCTAssertEqual(confidence, "Medium")
+    }
 }

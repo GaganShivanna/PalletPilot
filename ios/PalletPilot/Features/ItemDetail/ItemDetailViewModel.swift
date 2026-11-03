@@ -36,6 +36,7 @@ final class ItemDetailViewModel: ObservableObject {
     @Published var condition: ItemCondition = .unknown
     @Published var priceText = ""
     @Published var markReviewed = false
+    @Published var priceError: String?
 
     let itemId: String
     private let itemService: ItemServiceProtocol
@@ -49,6 +50,35 @@ final class ItemDetailViewModel: ObservableObject {
         self.init(itemId: itemId, itemService: container.itemService)
     }
 
+    /// First review reason, falling back to the category: the only
+    /// item-specific evidence the API provides (no verified market comps).
+    var evidenceLine: String {
+        if let reason = item?.reviewReasons.first, !reason.isEmpty { return reason }
+        return item?.category ?? "Uncategorized"
+    }
+
+    /// Server price provenance (`price_source` / `price_type`); never claims
+    /// a verified marketplace comparison the AI pipeline does not provide.
+    var priceSourceLabel: String {
+        guard let source = item?.priceSource, source != "none" else { return "No price source" }
+        let type = item?.priceType ?? "unknown"
+        return type == "unknown" ? "Estimate · \(source)" : "Estimate · \(source) · \(type)"
+    }
+
+    var priceConfidenceLabel: String {
+        guard let confidence = item?.priceConfidence else { return "Unknown" }
+        if confidence < 0.34 { return "Low" }
+        if confidence < 0.67 { return "Medium" }
+        return "High"
+    }
+
+    var priceFootnote: String {
+        if item?.suggestedPrice == nil {
+            return "No price estimate yet — unpriced items are not counted."
+        }
+        return "Estimates only, not verified market comps. Check before posting."
+    }
+
     var canSave: Bool {
         if case .loading = state { return false }
         if case .saving = state { return false }
@@ -60,8 +90,13 @@ final class ItemDetailViewModel: ObservableObject {
         return Int((confidence * 100).rounded())
     }
 
+    func clearPriceError() {
+        priceError = nil
+    }
+
     func load() async {
         state = .loading
+        priceError = nil
         do {
             let item = try await itemService.getItem(id: itemId)
             apply(item)
@@ -74,6 +109,20 @@ final class ItemDetailViewModel: ObservableObject {
 
     func save() async {
         guard let item else { return }
+        priceError = nil
+        let trimmedPrice = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+        var newPrice: Double?
+        var clearPrice = false
+        if !trimmedPrice.isEmpty {
+            guard let parsed = Double(trimmedPrice), parsed >= 0 else {
+                priceError = "Enter a valid price of 0 or more."
+                return
+            }
+            newPrice = parsed
+        } else if item.suggestedPrice != nil {
+            clearPrice = true
+        }
         state = .saving
         do {
             var patch = ItemPatch()
@@ -91,11 +140,9 @@ final class ItemDetailViewModel: ObservableObject {
             if condition.rawValue != item.condition {
                 patch.condition = condition
             }
-            let trimmedPrice = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "$", with: "")
-            if trimmedPrice.isEmpty {
-                if item.suggestedPrice != nil { patch.clearsPrice = true }
-            } else if let price = Double(trimmedPrice), price != item.suggestedPrice ?? -1 {
+            if clearPrice {
+                patch.clearsPrice = true
+            } else if let price = newPrice, price != item.suggestedPrice ?? -1 {
                 patch.suggestedPrice = price
             }
             // Toggle semantics: on = approved (`needs_review: false`).
