@@ -21,16 +21,25 @@ final class UploadViewModel: ObservableObject {
 
     private let palletService: PalletServiceProtocol
     private let jobService: JobServiceProtocol
+    private let historyStore: PalletHistoryStore
     private var video: UploadVideo?
     private var createdPalletId: String?
 
-    init(palletService: PalletServiceProtocol, jobService: JobServiceProtocol) {
+    init(
+        palletService: PalletServiceProtocol,
+        jobService: JobServiceProtocol,
+        historyStore: PalletHistoryStore = .init()
+    ) {
         self.palletService = palletService
         self.jobService = jobService
+        self.historyStore = historyStore
     }
 
     convenience init(container: AppContainer) {
-        self.init(palletService: container.palletService, jobService: container.jobService)
+        self.init(
+            palletService: container.palletService,
+            jobService: container.jobService,
+            historyStore: container.palletHistoryStore)
     }
 
     var canUpload: Bool {
@@ -56,26 +65,47 @@ final class UploadViewModel: ObservableObject {
     }
 
     func startUpload() async {
+        // The uploaded pallet already has a job: re-submitting would hit the
+        // backend 409. The view replaces this button with Track progress.
+        if case .uploaded = state { return }
         guard let video else {
             state = .failed(message: "Choose a video first.")
             return
         }
         guard let costs = validatedCosts() else { return }
+        let draftName = palletName.isEmpty ? "Untitled pallet" : palletName
         do {
             let palletId: String
             if let createdPalletId {
                 palletId = createdPalletId
+            } else if let pending = historyStore.pendingUpload(),
+                pending.name == draftName,
+                pending.purchase == costs.purchase,
+                pending.additional == costs.additional {
+                // Same draft, new ViewModel (leave + return): adopt the
+                // already-created pallet instead of duplicating it.
+                createdPalletId = pending.palletId
+                palletId = pending.palletId
             } else {
                 state = .creatingPallet
                 let pallet = try await palletService.createPallet(PalletCreate(
-                    name: palletName.isEmpty ? "Untitled pallet" : palletName,
+                    name: draftName,
                     purchaseCost: costs.purchase, additionalCosts: costs.additional
                 ))
                 createdPalletId = pallet.id
                 palletId = pallet.id
+                historyStore.save(palletId: pallet.id, jobId: nil, name: pallet.name)
+                historyStore.savePending(PendingUpload(
+                    palletId: pallet.id, name: draftName,
+                    purchase: costs.purchase, additional: costs.additional))
             }
             state = .uploading(palletName: palletName)
             let created = try await jobService.uploadVideo(video, palletId: palletId)
+            historyStore.save(
+                palletId: palletId,
+                jobId: created.id,
+                name: draftName)
+            historyStore.clearPending()
             state = .uploaded(jobId: created.id, palletId: palletId)
         } catch {
             state = .failed(message: (error as? LocalizedError)?.errorDescription

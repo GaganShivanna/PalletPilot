@@ -3,19 +3,20 @@
 Feature and module index for PalletPilot. Read this before exploring
 unfamiliar code. Verify entries against source; the map may lag the tree.
 
-Last updated: 2026-10-28. State: backend Phase 2 done (mock end-to-end); iOS not started.
+Last updated: 2026-10-31. State: backend Phase 2 + AI integration done (mock default, hosted SAM/Muse Spark wired, Muse Image stub); iOS Phase 1 + upload/processing scaffolded, SSE/inventory pending.
 
 ## Features
 
 - Video-to-listings job (backend): `POST /jobs` upload -> `app/services/jobs.py`
   queue -> `app/services/pipeline.py` (frames -> provider segmentation ->
   identification -> photos w/ fallback -> fixture pricing -> listing drafts ->
-  item persistence). All mock, no external calls.
-- Pallets: `POST/GET /pallets`, `GET /pallets/{id}/items`, `PATCH /items/{id}`,
+  item persistence). Mock default; hosted SAM/Muse Spark behind `AI_PROVIDER`.
+- Pallets: `POST /pallets`, `GET /pallets/{id}/items`, `PATCH /items/{id}`,
   `GET /pallets/{id}/export` (CSV). Financial summaries via
   `app/services/financials.py` (estimates; unpriced items excluded).
-- Provider interface: `app/providers/` (base contracts, mock, factory, loud
-  unimplemented real adapters). One DetectedProduct per physical item.
+- Provider interface: `app/providers/` (base contracts, mock, factory,
+  real SAM/Muse Spark adapters behind `AI_PROVIDER`, Muse Image still
+  raising). One DetectedProduct per physical item.
 - Durable metadata: `app/services/persistence.py` (SQLite `meta.db`: jobs,
   pallets, items); restart marks interrupted jobs failed.
 
@@ -23,17 +24,23 @@ Last updated: 2026-10-28. State: backend Phase 2 done (mock end-to-end); iOS not
 
 - `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing +
   design screens: `.xcodeproj`, `PalletPilot/{App,Core/{…,Components/DesignComponents,Theme},
-  Features/{Home,Upload,Processing,Capture,Inventory,ItemDetail,Summary,Export},
-  Services/{Health,Pallet,Job,Item}}`, `PalletPilotTests/`.
+  Features/{Home,Upload,Processing,Capture,Inventory,ItemDetail,Summary,Export,History},
+  Services/{Health,Pallet,Job,Item,PalletHistoryStore}}`, `PalletPilotTests/`.
+  `Core/Networking/SSEClient` (job events with poll fallback),
+  `Core/Models/JobEvent` (event envelope), `ItemPhotoImage` (files-endpoint photos).
 - `backend/` — FastAPI service (see `backend/AGENTS.md`).
   - `app/routes/` — `health.py` (`GET /health`), `jobs.py` (`POST/GET /jobs`,
-    `GET /jobs/{id}`, `GET /jobs/{id}/files/{path}`), `pallets.py`
-    (`POST/GET /pallets`, `GET /pallets/{id}/items`, `GET …/export`),
+    `GET /jobs/{id}`, `GET /jobs/{id}/events` (SSE), `GET /jobs/{id}/files/{path}`), `pallets.py`
+    (`POST /pallets`, `GET /pallets/{id}/items`, `GET …/export`),
     `items.py` (`GET/PATCH /items/{id}`).
-  - `app/schemas/` — `jobs.py` (Job, JobStatus), `listings.py` (Listing, Price),
+  - `app/schemas/` — `jobs.py` (Job, JobStatus), `job_events.py` (JobEvent,
+    JobEventType), `listings.py` (Listing, Price),
     `items.py` (Item, ItemPatch), `pallets.py` (Pallet, PalletSummary).
   - `app/providers/` — `base.py` (DetectedProduct/Identification/PhotoResult,
-    protocols, errors), `mock.py`, `real.py` (raising adapters), `factory.py`.
+    protocols, errors), `mock.py`, `real.py` (Muse Spark identify +
+    conservative condition map, SAM detect via lazy `sam_api`, raising
+    Muse Image), `sam_api.py` (hosted SAM video requests), `sam_output.py`
+    (output parsing), `sam_products.py` (crop/mask products), `factory.py`.
   - `app/services/` — `jobs.py` (SQLite store + asyncio worker), `pipeline.py`,
     `frames.py` (OpenCV sampling), `segmentation.py`, `product_photos.py`
     (provider + fallback), `listings.py` (deterministic drafts),
@@ -61,13 +68,20 @@ Last updated: 2026-10-28. State: backend Phase 2 done (mock end-to-end); iOS not
 ## Tests
 
 - `backend/tests/` — `test_jobs.py`, `test_providers.py`, `test_persistence.py`,
-  `test_phase2.py` (mock e2e + failures); pytest; command in `backend/AGENTS.md`.
+  `test_phase2.py` (mock e2e + failures), `test_muse_spark.py` (Spark HTTP
+  boundary + condition map), `test_sam_api.py`, `test_sam_output.py`,
+  `test_sam_products.py`, `test_progressive.py` (incremental visibility),
+  `test_job_events.py` (SSE: order/replay/resume/failure/disconnect);
+  pytest; command in `backend/AGENTS.md`.
 - `docs/FRONTEND_HANDOFF.md`, `docs/openapi.json` — client integration contract.
+- `docs/IOS_INTEGRATION_TASKS.md` — iOS task handoff (SSE workflow, screens, acceptance).
 - `ios/PalletPilotTests/` — contract decoding (Swift Testing) + networking/VM (XCTest).
 - `docs/ios/` — iOS integration specs from backend audit: `BACKEND_API_AUDIT.md`,
-  `API_CONTRACTS.md`, `USER_FLOW.md`, `INTEGRATION_GAPS.md`. No Swift code yet.
+  `API_CONTRACTS.md`, `USER_FLOW.md`, `INTEGRATION_GAPS.md`. Swift scaffold in
+  `ios/PalletPilot/` (Phase 1 + upload/processing flows).
+- `docs/AI_INTEGRATION.md` — real AI adapters, config, flow, limitations.
 
 ## Needs verification
 
-- Rebuild the Features section once the first modules land.
-- Confirm SwiftUI version when scaffolding iOS.
+- `docs/ios/` specs predate SSE + hosted AI (see header notes); refresh before extending.
+- Confirm one iOS simulator `xcodebuild test` run outside the sandbox.

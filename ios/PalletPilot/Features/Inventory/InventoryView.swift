@@ -6,6 +6,7 @@ import SwiftUI
 /// `Job.listings` is never read here (stale-after-edit rule).
 struct InventoryView: View {
     @Environment(\.router) private var router
+    @Environment(\.container) private var container
     @StateObject private var viewModel: InventoryViewModel
 
     init(viewModel: InventoryViewModel) {
@@ -37,7 +38,7 @@ struct InventoryView: View {
                         filterBar
                         SectionHeader(text: "Found so far")
                         itemCard
-                        Text("Prices are estimates from recent sold listings. Tap an item to check it.")
+                        Text("Prices are estimates, not verified market comps. Tap an item to check it.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 20)
@@ -116,7 +117,7 @@ struct InventoryView: View {
                 Button {
                     router.navigate(to: .itemDetail(itemId: item.id, palletId: viewModel.palletId))
                 } label: {
-                    InventoryRow(item: item)
+                    InventoryRow(item: item, imageURL: photoURL(for: item))
                         .padding(.horizontal, 16)
                         .contentShape(Rectangle())
                 }
@@ -129,6 +130,13 @@ struct InventoryView: View {
         .padding(.vertical, 4)
         .background(AppTheme.cardBackground, in: RoundedRectangle(cornerRadius: AppTheme.cardRadius))
         .padding(.horizontal, 16)
+    }
+
+    /// Absolute files-endpoint URL for an item's first photo, if the server
+    /// provided one. Relative paths resolve against the active backend.
+    private func photoURL(for item: Item) -> URL? {
+        let path = item.imageUrls.first ?? item.originalImageUrl
+        return path.flatMap { container.configuration.url(for: $0) }
     }
 
     private var bottomBar: some View {

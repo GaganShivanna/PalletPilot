@@ -1,6 +1,6 @@
 # CURRENT_STATUS.md
 
-Last updated: 2026-10-28 (iOS Phase 1 verification pass).
+Last updated: 2026-10-31 (`integration/ios-backend` merge of `feat/progressive-processing` + `feature/ios-scaffold`).
 
 ## Implemented
 
@@ -16,6 +16,20 @@ Last updated: 2026-10-28 (iOS Phase 1 verification pass).
   financial estimates, photo fallback, per-item failure degradation with
   transient retry. Contract: `docs/FRONTEND_HANDOFF.md` + `docs/openapi.json`.
   Stubs remaining: real SAM / Muse Spark / Muse Image adapters.
+- Phase B SSE (2026-10-30, `feat/progressive-processing`): persisted
+  per-job event log (`job_events` table) + `GET /jobs/{id}/events`
+  (replay, `Last-Event-ID` resume, keepalives, close-on-terminal).
+  Events: `job.started`, `segmentation.completed`, `listing.ready`
+  (post-commit), `job.completed`, `job.failed`. REST contract unchanged.
+- Backend+AI integration (2026-10-30, `integration/backend-ai`): wired the
+  AI engineer's hosted SAM segmentation (`app/providers/sam_*.py`) and Muse
+  Spark identification (`app/providers/real.py`) behind the existing
+  provider factory (`AI_PROVIDER=mock|sam|muse_spark|muse_image|real`).
+  Integration glue only: lazy `sam_api` import (mock runs without
+  `meta-sam-parser`), conservative Muse Spark→resale condition map with
+  raw-observation preservation, `.env.example` additions. No route, schema,
+  pricing, listing, or financial changes. Contract unchanged; details in
+  `docs/AI_INTEGRATION.md`. Muse Image still unimplemented (fallback covers).
 
 ## Implemented (iOS Phase 1, verified 2026-10-28)
 
@@ -39,8 +53,13 @@ Last updated: 2026-10-28 (iOS Phase 1 verification pass).
 
 ## Active blockers
 
-- Real AI adapters unimplemented: need verified SAM / Muse Spark / Muse Image
-  API details from the AI engineer (see `app/providers/real.py` messages).
+- SAM API transport verified (job `084e388b…`: 3 completed `/responses`
+  round-trips, zero matches — accepted as a valid completed result).
+  End-to-end real AI verified: "trash can" smoke job `78bf4cbc…` PASSED
+  (1 SAM track → 1 Spark ID → 1 item → CSV row; details in
+  `docs/AI_INTEGRATION.md`). Broader detection accuracy untuned (AI
+  engineer owns). No further paid calls without approval.
+- Muse Image generation unimplemented; all product photos are fallbacks.
 - A real-looking `MUSE_API_KEY` value was committed in `backend/.env.example`
   (since blanked); rotate the key if it was ever valid.
 - Skill auto-discovery unconfirmed in an unsandboxed terminal
@@ -48,11 +67,13 @@ Last updated: 2026-10-28 (iOS Phase 1 verification pass).
 
 ## Test status
 
-- Backend: 25/25 pytest pass (18 Phase 1 + 7 Phase 2 e2e/failures), covering
-  all endpoints over the full ASGI stack. Live TCP/uds serving could not be
-  verified in-session: the sandbox denies all socket binds (uvicorn boots
-  through "Application startup complete", then fails at bind). Recommend one
-  unsandboxed run: `cd backend && .venv/bin/uvicorn app.main:app`.
+- Backend: 57/57 pytest pass (25 Phase 1+2, 13 AI-adapter HTTP-boundary,
+  6 condition-mapping, 1 progressive-visibility, 12 SSE events). Mock e2e
+  over the full ASGI stack still green (7/7 Phase 2). Live TCP/uds serving
+  could not be verified in-session:
+  the sandbox denies all socket binds (uvicorn boots through "Application
+  startup complete", then fails at bind). Recommend one unsandboxed run:
+  `cd backend && .venv/bin/uvicorn app.main:app`.
 - Skill validation: 7/7 pass `muse skills validate --json` with zero diagnostics.
 - iOS (Xcode 26.5, license accepted 2026-10-28): `xcodebuild build` and
   `build-for-testing` SUCCEED for the simulator SDK (app + test targets,
@@ -84,8 +105,9 @@ Last updated: 2026-10-28 (iOS Phase 1 verification pass).
 
 ## Remaining P0
 
-1. Phase 3: real SAM / Muse Spark / Muse Image adapters; bounded concurrency
-   for external calls; test on footage.
+1. Phase 3: live SAM/Muse Spark test on footage; Muse Image adapter or
+   confirmed fallback; bounded concurrency for external calls
+   (`PROVIDER_MAX_CONCURRENCY` unenforced — calls run sequentially).
 2. iOS: one simulator run of `xcodebuild test` + Home tap of Check connection
    against a live backend (both blocked only by this sandbox).
 3. Phase 4: hardening, deployment config, demo prep.

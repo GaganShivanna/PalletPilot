@@ -4,12 +4,13 @@ import SwiftUI
 enum AppRoute: Hashable {
     case home
     case upload
-    case capture(palletId: String?)
+    case capture(palletId: String?, jobId: String?)
     case processing(jobId: String, palletId: String?)
     case inventory(palletId: String)
     case itemDetail(itemId: String, palletId: String)
     case summary(palletId: String)
     case export(palletId: String)
+    case history
 }
 
 /// Reusable NavigationStack router. Views navigate via the environment router,

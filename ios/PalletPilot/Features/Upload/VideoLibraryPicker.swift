@@ -97,6 +97,11 @@ struct VideoLibraryPicker: View {
 
     private var selectBar: some View {
         VStack(spacing: 6) {
+            if pickerModel.selectedId == nil {
+                Text("Tap a video to check it, then Select.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             if let errorMessage {
                 Text(errorMessage)
                     .font(.subheadline)
@@ -163,37 +168,48 @@ struct VideoLibraryPicker: View {
     }
 }
 
-/// Async thumbnail for one library asset.
+/// Async thumbnail for one library asset. The color box fixes the square
+/// cell and the overlay image fills it edge to edge (portrait clips crop
+/// top/bottom by design); no GeometryReader, which mis-sizes inside lazy
+/// grids and leaves the fit/fill bands seen in review.
 private struct VideoThumbnail: View {
     let asset: PHAsset
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            Color(.systemGray5)
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                ProgressView()
+        Color(.systemGray5)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    ProgressView()
+                }
             }
-        }
-        .task { await load() }
+            .clipped()
+            .task { await load() }
     }
 
     private func load() async {
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
+        // Single delivery: `.opportunistic` invokes the result handler
+        // multiple times, which would resume the continuation twice and
+        // crash. High-quality format delivers exactly once.
+        options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         options.isNetworkAccessAllowed = true
         let result: UIImage? = await withCheckedContinuation { continuation in
+            var resumed = false
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: CGSize(width: 300, height: 300),
                 contentMode: .aspectFill,
                 options: options
             ) { image, _ in
+                guard !resumed else { return }
+                resumed = true
                 continuation.resume(returning: image)
             }
         }

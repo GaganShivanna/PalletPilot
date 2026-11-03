@@ -74,7 +74,7 @@ struct ExportView: View {
                 Text(viewModel.fileName)
                     .font(.headline)
                     .lineLimit(1)
-                Text("\(viewModel.reviewedCount) listings · eBay-ready columns")
+                Text("\(viewModel.exportedCount) listings · spreadsheet-ready columns")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

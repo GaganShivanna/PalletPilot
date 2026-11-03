@@ -1,5 +1,11 @@
 # PalletPilot Backend API Audit (for iOS)
 
+> Integration note (2026-10-31): written against the pre-SSE, mock-only
+> backend. Since then the backend added `GET /jobs/{job_id}/events` (SSE)
+> and hosted SAM/Muse Spark adapters (`AI_PROVIDER`); REST shapes are
+> unchanged. See `docs/FRONTEND_HANDOFF.md` (SSE section) and
+> `docs/AI_INTEGRATION.md` for the current contract.
+
 Date: 2026-10-28. Sources: `docs/FRONTEND_HANDOFF.md`, `docs/openapi.json`,
 `backend/app/routes/*`, `backend/app/schemas/*`, `backend/app/services/*`,
 `backend/tests/test_phase2.py`, `backend/tests/test_jobs.py`.
