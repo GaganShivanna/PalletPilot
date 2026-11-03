@@ -21,8 +21,8 @@ No marketplace APIs or scraping yet. Estimates resolve in tiers:
 """
 
 from app.schemas.items import PriceEstimate
-from app.services.ebay_pricing import EbayPricingProvider, get_ebay_provider
-from app.services.muse_pricing import MusePriceProvider, get_muse_provider
+from app.services.ebay_pricing import EbayPricingProvider
+from app.services.muse_pricing import MusePriceProvider
 
 # Reference prices for mock-catalog products only. Not market data.
 MOCK_FIXTURES: dict[str, PriceEstimate] = {
@@ -88,26 +88,27 @@ def get_price(
     *,
     ebay: EbayPricingProvider | None = None,
     muse: MusePriceProvider | None = None,
+    identification_confidence: float | None = None,
 ) -> PriceEstimate:
     """Return the best available estimate for a product.
 
     Exact-name fixtures win, then the live eBay median, then the Muse
     guess, then the normalized category table, otherwise unknown
-    (null). ``None`` providers (the pipeline default) resolve from
-    settings and yield None when their credentials are absent — no
-    network, no behavior change.
+    (null). ``None`` disables that tier — the pipeline resolves live
+    providers explicitly from app settings, so this function never
+    touches global config or the network on its own. The Muse call is
+    skipped when identification confidence is null: unidentified items
+    never produce usable guesses, so don't spend the call.
     """
     estimate = MOCK_FIXTURES.get(product_name)
     if estimate is not None:
         return estimate.model_copy(deep=True)
-    ebay_provider = ebay if ebay is not None else _default_ebay_provider()
-    if ebay_provider is not None:
-        estimate = ebay_provider.estimate(product_name, category)
+    if ebay is not None:
+        estimate = ebay.estimate(product_name, category)
         if estimate is not None:
             return estimate
-    muse_provider = muse if muse is not None else _default_muse_provider()
-    if muse_provider is not None:
-        estimate = muse_provider.estimate(product_name, category)
+    if muse is not None and identification_confidence is not None:
+        estimate = muse.estimate(product_name, category)
         if estimate is not None:
             return estimate
     if category:
@@ -115,17 +116,3 @@ def get_price(
         if estimate is not None:
             return estimate.model_copy(deep=True)
     return UNKNOWN_PRICE.model_copy(deep=True)
-
-
-def _default_ebay_provider() -> EbayPricingProvider | None:
-    try:
-        return get_ebay_provider()
-    except Exception:  # noqa: BLE001 - eBay must never break pricing
-        return None
-
-
-def _default_muse_provider() -> MusePriceProvider | None:
-    try:
-        return get_muse_provider()
-    except Exception:  # noqa: BLE001 - Muse must never break pricing
-        return None

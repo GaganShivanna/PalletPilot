@@ -99,8 +99,10 @@ def test_tier_order_muse_between_ebay_and_category():
     class Stub:
         def __init__(self, estimate):
             self.value = estimate
+            self.calls = 0
 
         def estimate(self, name, category):
+            self.calls += 1
             return self.value
 
     muse = Stub(
@@ -113,7 +115,12 @@ def test_tier_order_muse_between_ebay_and_category():
         )
     )
     # Muse beats the category table...
-    estimate = get_price("Mesh Wastebasket", "Trash Cans & Wastebaskets", muse=muse)
+    estimate = get_price(
+        "Mesh Wastebasket",
+        "Trash Cans & Wastebaskets",
+        muse=muse,
+        identification_confidence=0.8,
+    )
     assert (estimate.amount, estimate.source) == (33.0, "muse_estimate")
     # ...but eBay beats Muse.
     ebay = Stub(
@@ -125,8 +132,29 @@ def test_tier_order_muse_between_ebay_and_category():
             price_type="asking",
         )
     )
-    estimate = get_price("Mesh Wastebasket", "Trash Cans", ebay=ebay, muse=muse)
+    estimate = get_price(
+        "Mesh Wastebasket", "Trash Cans", ebay=ebay, muse=muse,
+        identification_confidence=0.8,
+    )
     assert (estimate.amount, estimate.source) == (27.5, "ebay_active")
     # Muse returning None falls to the category table.
-    estimate = get_price("Some rug", "Rugs", muse=Stub(None))
+    estimate = get_price(
+        "Some rug", "Rugs", muse=Stub(None), identification_confidence=0.8
+    )
     assert (estimate.amount, estimate.source) == (20.0, "category_estimate")
+    # Null identification confidence skips the Muse call entirely.
+    skipped = Stub(
+        PriceEstimate(
+            amount=33.0,
+            currency="USD",
+            source="muse_estimate",
+            confidence=0.5,
+            price_type="estimate",
+        )
+    )
+    estimate = get_price(
+        "Mesh Wastebasket", "Trash Cans & Wastebaskets", muse=skipped,
+        identification_confidence=None,
+    )
+    assert (estimate.amount, estimate.source) == (8.0, "category_estimate")
+    assert skipped.calls == 0

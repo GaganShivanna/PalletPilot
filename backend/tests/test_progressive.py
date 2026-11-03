@@ -59,13 +59,15 @@ class GatedIdentificationProvider:
     def identify(self, product):
         self.call_count += 1
 
-        # Pause BEFORE identifying the second item.
-        if self.call_count == 2:
+        # Pause all but the first identification: the per-item loop runs
+        # on worker threads, so calls 2 AND 3 must block for exactly one
+        # item to be visible mid-run.
+        if self.call_count >= 2:
             self.reached_item_2.set()
 
             if not self.release.wait(timeout=15):
                 raise TimeoutError(
-                    "Test never released Item 2"
+                    "Test never released gated items"
                 )
 
         return self.delegate.identify(product)
@@ -81,6 +83,7 @@ def test_incremental_item_visibility(
 ):
     # Use isolated test settings and database.
     settings = Settings(
+        _env_file=None,
         data_dir=tmp_path / "data",
         ai_provider="mock",
     )
@@ -140,11 +143,17 @@ def test_incremental_item_visibility(
                 "Worker never reached Item 2"
             )
 
-            # D. Item 2 is paused.
-            # Item 1 should already be saved.
+            # D. Gated calls are paused; the one running call must
+            # persist its item while the job stays unfinished.
             store = app.state.job_store
 
-            saved_items = store.db.items_for_job(job_id)
+            deadline = time.monotonic() + 15
+            saved_items = []
+            while time.monotonic() < deadline:
+                saved_items = store.db.items_for_job(job_id)
+                if len(saved_items) == 1:
+                    break
+                time.sleep(0.05)
 
             assert len(saved_items) == 1
 

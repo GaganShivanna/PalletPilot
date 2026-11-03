@@ -234,8 +234,8 @@ class Database:
     ) -> dict:
         """Append one event, assigning the next per-job event id.
 
-        Single-writer safe: only the job worker appends events for a job,
-        and the id assignment + insert run in one transaction.
+        Callers must serialize concurrent appends (JobStore.emit_event
+        holds a lock): the MAX+1 assignment races across threads.
         """
         now = utcnow()
         with self._connect() as conn:

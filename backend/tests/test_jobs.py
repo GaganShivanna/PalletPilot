@@ -70,3 +70,34 @@ def test_file_route_blocks_traversal(client, tmp_path):
 
 def test_unknown_job_404(client):
     assert client.get("/jobs/nope").status_code == 404
+
+
+def test_concurrent_emit_event_ids_are_gapless(tmp_path):
+    """Worker threads appending events get unique sequential ids (no MAX+1 race)."""
+    import threading
+
+    from app.services.jobs import JobStore
+
+    store = JobStore(tmp_path / "data")
+    job_id = store.create("v.mp4").id
+
+    errors = []
+
+    def emit_many(n):
+        try:
+            for _ in range(n):
+                store.emit_event(job_id, "listing.ready", item_id="x")
+        except Exception as exc:  # noqa: BLE001 - collected, asserted below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=emit_many, args=(10,)) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors
+    ids = sorted(
+        row["id"] for row in store.db.events_after(job_id, after_id=0, limit=100)
+    )
+    assert ids == list(range(1, 41))

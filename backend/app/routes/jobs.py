@@ -235,12 +235,14 @@ async def job_events(
     async def generate():
         nonlocal last_id
         idle_polls = 0
+        terminal_polls = 0
 
         while True:
             rows = store.db.events_after(job_id, last_id)
 
             if rows:
                 idle_polls = 0
+                terminal_polls = 0
 
                 for event in rows:
                     last_id = event["id"]
@@ -258,7 +260,14 @@ async def job_events(
                 JobStatus.completed,
                 JobStatus.failed,
             ):
-                return
+                # The terminal status commits just before its event;
+                # require consecutive terminal polls so a reader landing
+                # in that gap still sees the closing event.
+                terminal_polls += 1
+                if terminal_polls >= 3:
+                    return
+                await asyncio.sleep(POLL_INTERVAL_S)
+                continue
 
             idle_polls += 1
 

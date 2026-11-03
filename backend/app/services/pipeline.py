@@ -2,6 +2,9 @@
 
 import json
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import Settings
@@ -12,9 +15,11 @@ from app.providers.base import (
 )
 from app.providers.factory import Providers, get_providers
 from app.schemas.jobs import JobStatus
+from app.services.ebay_pricing import EbayPricingProvider
 from app.services.frames import sample_frames
 from app.services.jobs import JobStore
 from app.services.listings import draft_item, item_to_listing
+from app.services.muse_pricing import MusePriceProvider
 from app.services.manifest import ManifestMatcher, parse_manifest_csv
 from app.services.pricing import get_price
 from app.services.product_photos import generate_product_photos
@@ -89,6 +94,126 @@ def write_manifest_report(
     temporary.replace(destination)
 
 
+@dataclass
+class _ItemContext:
+    """Shared read-mostly state for per-item workers."""
+
+    job_id: str
+    store: JobStore
+    settings: Settings
+    providers: Providers
+    job_dir: Path
+    pallet_id: str | None
+    matcher: ManifestMatcher | None
+    matcher_lock: threading.Lock
+    ebay: EbayPricingProvider | None
+    muse: MusePriceProvider | None
+
+
+def _process_product(context: _ItemContext, product: DetectedProduct):
+    """Identify, photograph, price, and persist one product.
+
+    Runs on worker threads. Only the matcher (mutable) and event
+    emission (MAX+1 ids, locked inside JobStore) need serializing;
+    HTTP calls, files, and item rows are all per-product.
+    """
+    job_id = context.job_id
+    store = context.store
+    stored_id = f"{job_id}:{product.item_id}"
+
+    identification = identify_with_fallback(
+        product,
+        context.providers,
+        context.settings.provider_max_retries,
+    )
+
+    review_reasons = [
+        *product.review_reasons,
+        *identification.review_reasons,
+    ]
+
+    if context.matcher is not None:
+        with context.matcher_lock:
+            decision = context.matcher.check(
+                stored_id,
+                identification,
+            )
+        review_reasons.extend(
+            [
+                f"Manifest check: {decision['status']}.",
+                *decision["reasons"],
+            ]
+        )
+
+    # Preserve visual identity; add review notes without replacing it
+    # with a manifest name, brand or condition.
+    identification = identification.model_copy(
+        update={
+            "needs_review": True,
+            "review_reasons": list(
+                dict.fromkeys(review_reasons)
+            ),
+        }
+    )
+
+    photo_paths = generate_product_photos(
+        product,
+        context.job_dir / "photos",
+        context.providers.photos,
+    )
+
+    urls = [
+        f"/jobs/{job_id}/files/{path.relative_to(context.job_dir).as_posix()}"
+        for path in photo_paths
+    ]
+
+    original_url = (
+        f"/jobs/{job_id}/files/"
+        f"{Path(product.frame_path).relative_to(context.job_dir).as_posix()}"
+    )
+
+    item = draft_item(
+        product,
+        identification,
+        get_price(
+            identification.name,
+            identification.category,
+            ebay=context.ebay,
+            muse=context.muse,
+            identification_confidence=identification.confidence,
+        ),
+        item_id=stored_id,
+        job_id=job_id,
+        pallet_id=context.pallet_id,
+        image_urls=urls,
+        original_image_url=original_url,
+    )
+
+    store.db.insert_item(
+        item.model_dump(
+            exclude={"created_at", "updated_at"}
+        )
+    )
+
+    # Only publish report decisions for items already persisted.
+    if context.matcher is not None:
+        with context.matcher_lock:
+            write_manifest_report(
+                context.job_dir,
+                context.matcher,
+                processing_complete=False,
+            )
+
+    store.emit_event(
+        job_id,
+        "listing.ready",
+        item_id=stored_id,
+        payload={"item_id": stored_id},
+    )
+
+    return item_to_listing(item)
+
+
 def run_pipeline(
     job_id: str,
     store: JobStore,
@@ -151,106 +276,40 @@ def run_pipeline(
         payload={"track_count": len(products)},
     )
 
-    listings = []
+    # One coarse status for the whole fan-out: per-item status writes
+    # would flap meaninglessly across worker threads.
+    store.update(job_id, status=JobStatus.identifying)
 
-    for product in products:
-        stored_id = f"{job_id}:{product.item_id}"
+    # Live pricing providers resolve once from THIS run's settings
+    # (never global config): tests with isolated settings get None and
+    # stay offline, live runs get whatever .env enables.
+    context = _ItemContext(
+        job_id=job_id,
+        store=store,
+        settings=settings,
+        providers=providers,
+        job_dir=job_dir,
+        pallet_id=pallet_id,
+        matcher=matcher,
+        matcher_lock=threading.Lock(),
+        ebay=EbayPricingProvider.from_settings(settings),
+        muse=MusePriceProvider.from_settings(settings),
+    )
 
-        store.update(job_id, status=JobStatus.identifying)
-
-        identification = identify_with_fallback(
-            product,
-            providers,
-            settings.provider_max_retries,
-        )
-
-        review_reasons = [
-            *product.review_reasons,
-            *identification.review_reasons,
-        ]
-
-        if matcher is not None:
-            decision = matcher.check(
-                stored_id,
-                identification,
-            )
-            review_reasons.extend(
-                [
-                    f"Manifest check: {decision['status']}.",
-                    *decision["reasons"],
-                ]
-            )
-
-        # Preserve visual identity; add review notes without replacing it
-        # with a manifest name, brand or condition.
-        identification = identification.model_copy(
-            update={
-                "needs_review": True,
-                "review_reasons": list(
-                    dict.fromkeys(review_reasons)
-                ),
-            }
-        )
-
-        store.update(
-            job_id,
-            status=JobStatus.generating_photos,
-        )
-
-        photo_paths = generate_product_photos(
-            product,
-            job_dir / "photos",
-            providers.photos,
-        )
-
-        store.update(
-            job_id,
-            status=JobStatus.generating_listings,
-        )
-
-        urls = [
-            f"/jobs/{job_id}/files/{path.relative_to(job_dir).as_posix()}"
-            for path in photo_paths
-        ]
-
-        original_url = (
-            f"/jobs/{job_id}/files/"
-            f"{Path(product.frame_path).relative_to(job_dir).as_posix()}"
-        )
-
-        item = draft_item(
-            product,
-            identification,
-            get_price(identification.name, identification.category),
-            item_id=stored_id,
-            job_id=job_id,
-            pallet_id=pallet_id,
-            image_urls=urls,
-            original_image_url=original_url,
-        )
-
-        store.db.insert_item(
-            item.model_dump(
-                exclude={"created_at", "updated_at"}
+    # Items are independent (own HTTP calls, files, DB rows); the pool
+    # size reuses the previously idle provider_max_concurrency setting.
+    # map() preserves product order and re-raises worker failures, so a
+    # bad item still fails the job exactly as the sequential loop did.
+    with ThreadPoolExecutor(
+        max_workers=settings.provider_max_concurrency,
+        thread_name_prefix=f"pp-{job_id[:8]}",
+    ) as pool:
+        listings = list(
+            pool.map(
+                lambda product: _process_product(context, product),
+                products,
             )
         )
-
-        # Only publish report decisions for items already persisted.
-        if matcher is not None:
-            write_manifest_report(
-                job_dir,
-                matcher,
-                processing_complete=False,
-            )
-
-        store.emit_event(
-            job_id,
-            "listing.ready",
-            item_id=stored_id,
-            payload={"item_id": stored_id},
-        )
-
-        listings.append(item_to_listing(item))
 
     if matcher is not None:
         write_manifest_report(

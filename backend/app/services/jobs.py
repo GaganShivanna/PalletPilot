@@ -8,6 +8,7 @@ startup are marked failed explicitly — never silently resumed or dropped.
 import asyncio
 import json
 import logging
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +38,8 @@ class JobStore:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.db = Database(data_dir / "meta.db")
+        # Event ids are MAX+1: concurrent appends must serialize.
+        self._event_lock = threading.Lock()
         recovered = self.db.recover_interrupted()
         if recovered:
             log.warning("Marked %d interrupted job(s) as failed after restart", recovered)
@@ -63,7 +66,8 @@ class JobStore:
         payload: dict | None = None,
     ) -> dict:
         """Append one SSE event to the job's persisted event log."""
-        return self.db.append_event(job_id, event_type, item_id, payload)
+        with self._event_lock:
+            return self.db.append_event(job_id, event_type, item_id, payload)
 
     def update(
         self,
