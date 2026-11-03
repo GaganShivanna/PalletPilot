@@ -16,3 +16,6 @@
 - 2026-10-28: Pallet-job link is single-path: `POST /jobs` takes optional `pallet_id` form field, or `POST /pallets` with `job_id` claims finished items (`claim_job_items`, no reprocessing). Job→pallet resolved via `pallets.job_id` (`get_pallet_for_job`); one pallet per job (409 on double-link).
 - 2026-10-28: Client contract is `docs/FRONTEND_HANDOFF.md` + `docs/openapi.json` (regen: `backend/scripts/export_openapi.py`). `GET /pallets/{id}` returns `PalletSummary` (estimates; unpriced excluded from revenue). CSV (`exports.py`) guards formula injection, empty-cell nulls, stable id order. Mock drafts carry `Demo draft` marker + `needs_review`.
 - 2026-10-28: Phase 3 next step: implement real adapters in `backend/app/providers/real.py` from verified API docs (nothing verified yet), add bounded concurrency (semaphore on `provider_max_concurrency`) around external calls, test on real footage.
+
+
+- 2026-11-03: Pricing is tiered built-in estimates (`backend/app/services/pricing.py`): exact-name fixtures → category table (`source="category_estimate"`, confidence 0.2) → null for vague/unmatched categories. Chosen over eBay API (needs user credentials) and LLM guesses. Values are conservative placeholders; replace with sold-market data later.

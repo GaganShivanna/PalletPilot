@@ -221,7 +221,7 @@ def run_pipeline(
         item = draft_item(
             product,
             identification,
-            get_price(identification.name),
+            get_price(identification.name, identification.category),
             item_id=stored_id,
             job_id=job_id,
             pallet_id=pallet_id,
