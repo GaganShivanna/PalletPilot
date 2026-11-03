@@ -9,6 +9,7 @@ final class CaptureViewModel: ObservableObject {
     @Published private(set) var elapsedSeconds = 0
     @Published private(set) var itemsFound = 0
     @Published private(set) var latestItem: Item?
+    @Published private(set) var hasServerData = false
     @Published var palletName = "New pallet"
 
     private let jobService: JobServiceProtocol?
@@ -57,6 +58,7 @@ final class CaptureViewModel: ObservableObject {
             itemsFound = items.count
             latestItem = items.last
             palletName = summary.pallet.name
+            hasServerData = true
             _ = jobId
             _ = jobService
         } catch {

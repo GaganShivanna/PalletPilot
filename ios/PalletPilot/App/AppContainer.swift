@@ -9,6 +9,7 @@ struct AppContainer: Sendable {
     let palletService: PalletServiceProtocol
     let jobService: JobServiceProtocol
     let itemService: ItemServiceProtocol
+    let palletHistoryStore: PalletHistoryStore
 
     /// Live backend wiring.
     static func live(session: URLSession = .shared) -> AppContainer {
@@ -20,7 +21,8 @@ struct AppContainer: Sendable {
             healthService: HealthService(client: client),
             palletService: PalletService(client: client),
             jobService: JobService(client: client),
-            itemService: ItemService(client: client)
+            itemService: ItemService(client: client),
+            palletHistoryStore: PalletHistoryStore()
         )
     }
 
@@ -32,7 +34,8 @@ struct AppContainer: Sendable {
             healthService: HealthService(client: client),
             palletService: PalletService(client: client),
             jobService: JobService(client: client),
-            itemService: ItemService(client: client)
+            itemService: ItemService(client: client),
+            palletHistoryStore: PalletHistoryStore()
         )
     }
 }

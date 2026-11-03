@@ -304,6 +304,52 @@ final class FakeItemService: ItemServiceProtocol {
     }
 }
 
+/// Fake SSE client yielding a scripted frame sequence (or error) for
+/// `ProcessingViewModel.startLive()` tests. Decoding mirrors the app's
+/// fractional-seconds ISO 8601 handling.
+final class FakeSSEClient: SSEClientProtocol {
+    var frames: [ServerSentEvent] = []
+    var error: Error?
+    private(set) var urls: [URL] = []
+    private(set) var lastEventIDs: [Int?] = []
+
+    func events(url: URL, lastEventID: Int?) -> AsyncThrowingStream<ServerSentEvent, Error> {
+        urls.append(url)
+        lastEventIDs.append(lastEventID)
+        let frames = frames
+        let error = error
+        return AsyncThrowingStream { continuation in
+            Task {
+                for frame in frames {
+                    if Task.isCancelled { break }
+                    continuation.yield(frame)
+                }
+                if let error {
+                    continuation.finish(throwing: error)
+                } else {
+                    continuation.finish()
+                }
+            }
+        }
+    }
+
+    func decodeJobEvent(from data: Data) throws -> JobEvent {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            let withFraction = ISO8601DateFormatter()
+            withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = withFraction.date(from: raw) { return date }
+            if let date = ISO8601DateFormatter().date(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "bad date")
+        }
+        return try decoder.decode(JobEvent.self, from: data)
+    }
+}
+
 /// Fake job service with a scripted status sequence for polling tests.
 final class FakeJobService: JobServiceProtocol {
     var uploadResult: Result<JobCreated, Error> = .failure(APIError.invalidRequest("unset"))
@@ -325,7 +371,11 @@ final class FakeJobService: JobServiceProtocol {
         return statuses[min(calls - 1, statuses.count - 1)]
     }
 
+    /// When set, `listJobs()` throws instead of returning `statuses`.
+    var listError: Error?
+
     func listJobs() async throws -> [Job] {
-        statuses
+        if let listError { throw listError }
+        return statuses
     }
 }

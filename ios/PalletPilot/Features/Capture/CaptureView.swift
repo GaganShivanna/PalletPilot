@@ -7,6 +7,7 @@ import SwiftUI
 /// record button runs a local timer.
 struct CaptureView: View {
     @Environment(\.router) private var router
+    @Environment(\.container) private var container
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: CaptureViewModel
     private let palletId: String?
@@ -39,7 +40,9 @@ struct CaptureView: View {
                 }
                 Spacer()
                 if viewModel.isRecording {
-                    Text("\(viewModel.itemsFound) items found · tap to stop")
+                    Text(viewModel.hasServerData
+                        ? "\(viewModel.itemsFound) items found · tap to stop"
+                        : "Preview only · tap to stop")
                         .font(.headline)
                         .foregroundStyle(.white)
                 } else {
@@ -119,9 +122,9 @@ struct CaptureView: View {
 
     private var recordingOverlays: some View {
         VStack(spacing: 12) {
-            if let item = viewModel.latestItem {
+            if viewModel.hasServerData, let item = viewModel.latestItem {
                 HStack(spacing: 12) {
-                    ItemThumbnail(size: 52)
+                    ItemPhotoImage(url: photoURL(for: item), size: 52)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("LATEST ITEM · #\(viewModel.itemsFound)")
                             .font(.caption)
@@ -152,7 +155,16 @@ struct CaptureView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(AppTheme.recordRed, in: Capsule())
-            detectionBox
+            if viewModel.hasServerData {
+                detectionBox
+            } else {
+                Text("Preview only — upload a video to see live results")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(AppTheme.capturePill, in: Capsule())
+            }
             Text("Hold each item steady for 2–3 seconds")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.9))
@@ -180,6 +192,13 @@ struct CaptureView: View {
                         .frame(width: 170, height: 170)
                 )
         }
+    }
+
+    /// Absolute files-endpoint URL for an item's first photo, if the server
+    /// provided one. Relative paths resolve against the active backend.
+    private func photoURL(for item: Item) -> URL? {
+        let path = item.imageUrls.first ?? item.originalImageUrl
+        return path.flatMap { container.configuration.url(for: $0) }
     }
 
     private var bottomBar: some View {

@@ -46,6 +46,11 @@
 		963C4CCB6A7BB25D548A041E = {isa = PBXBuildFile; fileRef = 63F61C34A377761747D99699; };
 		AB9C07743FD03D7E7F5E6942 = {isa = PBXBuildFile; fileRef = 95E371452DB3FFE0CA524609; };
 		B11A4E8E49A2D70296962100 = {isa = PBXBuildFile; fileRef = 94E0F49866C9F1D3AD9ABA21; };
+		E5F60718293A4B5C6D7E8F9 = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5; };
+		F60718293A4B5C6D7E8F9A0 = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6; };
+		0718293A4B5C6D7E8F9A0B1 = {isa = PBXBuildFile; fileRef = C3D4E5F60718293A4B5C6D7; };
+		3A4B5C6D7E8F9A0B1C2D3E4 = {isa = PBXBuildFile; fileRef = 18293A4B5C6D7E8F9A0B1C2; };
+		4B5C6D7E8F9A0B1C2D3E4F5 = {isa = PBXBuildFile; fileRef = 293A4B5C6D7E8F9A0B1C2D3; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -89,6 +94,11 @@
 		5A4E491A23739CF2CAFF2182 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SummaryView.swift"; sourceTree = "<group>"; };
 		0DD5F11E27CBB82617FF1F41 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ExportViewModel.swift"; sourceTree = "<group>"; };
 		63F61C34A377761747D99699 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ExportView.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryView.swift"; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A4B5C6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HistoryViewModel.swift"; sourceTree = "<group>"; };
+		C3D4E5F60718293A4B5C6D7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PalletHistoryStore.swift"; sourceTree = "<group>"; };
+		18293A4B5C6D7E8F9A0B1C2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JobEvent.swift"; sourceTree = "<group>"; };
+		293A4B5C6D7E8F9A0B1C2D3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SSEClient.swift"; sourceTree = "<group>"; };
 		95E371452DB3FFE0CA524609 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VideoPickerViewModel.swift"; sourceTree = "<group>"; };
 		94E0F49866C9F1D3AD9ABA21 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VideoLibraryPicker.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -133,6 +143,11 @@
 				373B8AA5E8AFE8D883897DA7,
 				2A7C940A2E2B758E71FC27F7,
 				963C4CCB6A7BB25D548A041E,
+				E5F60718293A4B5C6D7E8F9,
+				F60718293A4B5C6D7E8F9A0,
+				0718293A4B5C6D7E8F9A0B1,
+				3A4B5C6D7E8F9A0B1C2D3E4,
+				4B5C6D7E8F9A0B1C2D3E4F5,
 
 			);
 			name = Sources;
@@ -216,6 +231,7 @@
 				B29C2A5795CDCAB6DF24489B,
 				6B01625B56247A3720D58E37,
 				6B7B80CF35F46091BACC634E,
+				D4E5F60718293A4B5C6D7E8,
 
 			);
 			path = PalletPilot;
@@ -250,6 +266,7 @@
 				6CF3B570B8AEF8842254A7D0,
 				89246232AA50A4870129F4B1,
 				6C75A2148D0821893FC7AEF2,
+				18293A4B5C6D7E8F9A0B1C2,
 			);
 			name = Models;
 			path = Core/Models;
@@ -261,6 +278,7 @@
 				E2C3ACA5E04C1B5F44B70805,
 				6BC990530A07D0BCEDA8863F,
 				5B6DBA9C5E11A80FC765042E,
+				293A4B5C6D7E8F9A0B1C2D3,
 			);
 			name = Networking;
 			path = Core/Networking;
@@ -314,6 +332,7 @@
 				54F98D6F4DC35C7DD594125E,
 				085BBB430BD5BD0F596D76FF,
 				FA53A34033A89E1F4A930769,
+				C3D4E5F60718293A4B5C6D7,
 			);
 			name = Services;
 			path = Services;
@@ -386,6 +405,16 @@
 			);
 			name = Export;
 			path = Features/Export;
+			sourceTree = "<group>";
+		};
+		D4E5F60718293A4B5C6D7E8 = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A4B5,
+				B2C3D4E5F60718293A4B5C6,
+			);
+			name = History;
+			path = Features/History;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

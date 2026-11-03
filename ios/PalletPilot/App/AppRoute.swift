@@ -10,6 +10,7 @@ enum AppRoute: Hashable {
     case itemDetail(itemId: String, palletId: String)
     case summary(palletId: String)
     case export(palletId: String)
+    case history
 }
 
 /// Reusable NavigationStack router. Views navigate via the environment router,

@@ -52,9 +52,14 @@ final class ExportViewModel: ObservableObject {
 
     func fetchCSV() async {
         shareError = nil
+        csvData = nil
         do {
             let data = try await palletService.exportCSV(palletId: palletId)
-            csvData = Self.filteredCSV(data, includeUnreviewed: includeUnreviewed)
+            guard let filtered = Self.filteredCSV(data, includeUnreviewed: includeUnreviewed) else {
+                shareError = "The export format changed — refusing to share rather than risk unreviewed rows."
+                return
+            }
+            csvData = filtered
         } catch {
             shareError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -62,14 +67,16 @@ final class ExportViewModel: ObservableObject {
 
     /// Drops `needs_review` rows when the toggle is off. Record-aware: quoted
     /// newlines inside a cell never split a row, and kept rows keep their
-    /// original bytes so server quoting/escaping is preserved.
-    nonisolated static func filteredCSV(_ data: Data, includeUnreviewed: Bool) -> Data {
+    /// original bytes so server quoting/escaping is preserved. Returns nil
+    /// when the header lacks `review_status`: sharing blindly would risk
+    /// leaking unreviewed rows, so the caller must fail closed instead.
+    nonisolated static func filteredCSV(_ data: Data, includeUnreviewed: Bool) -> Data? {
         guard !includeUnreviewed,
               let text = String(data: data, encoding: .utf8) else { return data }
         let records = Self.splitRecords(text)
         guard let header = records.first else { return data }
         guard let statusIndex = Self.splitFields(header).firstIndex(of: "review_status") else {
-            return data
+            return nil
         }
         var kept = [header]
         for record in records.dropFirst() {

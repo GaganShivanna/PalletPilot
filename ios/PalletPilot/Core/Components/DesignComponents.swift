@@ -37,6 +37,39 @@ struct ItemThumbnail: View {
     }
 }
 
+/// Server-backed item photo with the cube placeholder while loading or when
+/// `url` is nil. `url` must be an absolute files-endpoint URL.
+struct ItemPhotoImage: View {
+    let url: URL?
+    var size: CGFloat = AppTheme.rowThumbnail
+
+    var body: some View {
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        ItemThumbnail(size: size)
+                    case .empty:
+                        ItemThumbnail(size: size)
+                            .overlay { ProgressView() }
+                    @unknown default:
+                        ItemThumbnail(size: size)
+                    }
+                }
+            } else {
+                ItemThumbnail(size: size)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 /// Orange rounded-rect badge for per-row `review_reasons` (first reason shown).
 struct ReviewBadge: View {
     let text: String
@@ -80,10 +113,12 @@ struct SectionHeader: View {
 /// One tappable inventory row matching screenshot 5.
 struct InventoryRow: View {
     let item: Item
+    /// Absolute files-endpoint URL for the row photo; nil keeps the placeholder.
+    var imageURL: URL?
 
     var body: some View {
         HStack(spacing: 12) {
-            ItemThumbnail()
+            ItemPhotoImage(url: imageURL)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
                     .font(.headline)

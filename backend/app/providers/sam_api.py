@@ -20,40 +20,47 @@ from app.providers.sam_output import parse_completed_sam_output
 from app.providers.sam_products import build_sam_products
 
 
-def encode_video(
+# Codecs tried in order for the SAM input clip. mp4v is preferred, but
+# some OpenCV builds (missing ffmpeg codecs) cannot open it — that was the
+# "encoder could not be opened" failure. avc1/mp4s cover those builds; the
+# container stays .mp4 either way.
+_FOURCC_TAGS = ("mp4v", "avc1", "mp4s")
+
+
+def _codec_order(preferred: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """Preferred codecs first (from `SAM_FOURCC`), then the defaults."""
+    order = [tag for tag in preferred if len(tag) == 4]
+    order.extend(tag for tag in _FOURCC_TAGS if tag not in order)
+    return tuple(order)
+
+
+def _encode_with_codec(
     frame_paths: list[Path],
     destination: Path,
     fps: float,
-) -> Path:
-    """Encode frames in order while preserving their indices."""
-    if not frame_paths:
-        raise ProviderError("No source frames were supplied to SAM.")
+    size: tuple[int, int],
+    source_shape: tuple[int, int],
+    tag: str,
+) -> None:
+    """Encode and verify the clip with one codec.
 
-    first = cv2.imread(str(frame_paths[0]))
-
-    if first is None:
-        raise ProviderError("The first source frame could not be read.")
-
-    height, width = first.shape[:2]
-
-    # Prevent silent dimension changes by the encoder.
-    if width % 2 or height % 2:
-        raise ProviderError(
-            "SAM input frames must have even width and height."
-        )
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-
+    Opening is not proof: some backends report an opened writer and then
+    write nothing readable (0-byte AVFoundation output in headless
+    sessions). Only a clip that re-decodes with the expected frame count
+    and dimensions counts as success.
+    """
+    height, width = source_shape
+    target_height, target_width = size[1], size[0]
     writer = cv2.VideoWriter(
         str(destination),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*tag),
         fps,
-        (width, height),
+        size,
     )
 
     if not writer.isOpened():
         writer.release()
-        raise ProviderError("The MP4 video encoder could not be opened.")
+        raise ProviderError(f"codec {tag} could not be opened")
 
     try:
         for path in frame_paths:
@@ -64,17 +71,16 @@ def encode_video(
                     "Source frames must be readable and have equal dimensions."
                 )
 
-            writer.write(frame)
+            writer.write(frame[0:target_height, 0:target_width])
     finally:
         writer.release()
 
-    # Check that the encoded video matches the supplied source frames.
     capture = cv2.VideoCapture(str(destination))
 
     try:
         if not capture.isOpened():
             raise ProviderError(
-                "The encoded SAM video could not be opened."
+                f"codec {tag} produced a clip that could not be opened"
             )
 
         count = 0
@@ -85,19 +91,74 @@ def encode_video(
             if not ok:
                 break
 
-            if frame.shape[:2] != (height, width):
+            if frame.shape[:2] != (target_height, target_width):
                 raise ProviderError(
-                    "Video encoding changed frame dimensions."
+                    f"codec {tag} changed frame dimensions"
                 )
 
             count += 1
 
         if count != len(frame_paths):
             raise ProviderError(
-                "Video encoding changed the frame count."
+                f"codec {tag} wrote {count} of {len(frame_paths)} frames"
             )
     finally:
         capture.release()
+
+
+def encode_video(
+    frame_paths: list[Path],
+    destination: Path,
+    fps: float,
+    preferred_tags: tuple[str, ...] = (),
+) -> Path:
+    """Encode frames in order while preserving their indices."""
+    if not frame_paths:
+        raise ProviderError("No source frames were supplied to SAM.")
+
+    if fps <= 0:
+        raise ProviderError("The SAM encode frame rate must be positive.")
+
+    first = cv2.imread(str(frame_paths[0]))
+
+    if first is None:
+        raise ProviderError("The first source frame could not be read.")
+
+    height, width = first.shape[:2]
+
+    # Trim a stray odd row/column instead of failing the whole job: phone
+    # footage is occasionally odd-sized and no detection signal lives in the
+    # last pixel line. Frames with genuinely different dimensions still fail.
+    target_height = height - (height % 2)
+    target_width = width - (width % 2)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    order = _codec_order(preferred_tags)
+    failures = []
+
+    for tag in order:
+        try:
+            _encode_with_codec(
+                frame_paths,
+                destination,
+                fps,
+                (target_width, target_height),
+                (height, width),
+                tag,
+            )
+        except ProviderError as exc:
+            failures.append(f"{tag} ({exc})")
+            continue
+
+        return destination
+
+    raise ProviderError(
+        "The MP4 video encoder could not be opened "
+        f"(tried {', '.join(order)}: {'; '.join(failures)}). "
+        "The OpenCV build may lack working video encoders — "
+        "reinstall opencv-python with ffmpeg support."
+    )
 
     return destination
 
@@ -280,10 +341,16 @@ def detect_with_sam(
         # Valid empty discovery result: no SAM calls are necessary.
         return []
 
+    preferred = tuple(
+        value.strip().lower()
+        for value in settings.sam_fourcc.split(",")
+        if value.strip()
+    )
     video_path = encode_video(
         frame_paths,
         out_dir / "sam_input.mp4",
         settings.sample_fps,
+        preferred,
     )
 
     products = []

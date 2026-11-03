@@ -34,6 +34,8 @@ struct PalletPilotApp: App {
                             SummaryView(viewModel: SummaryViewModel(palletId: palletId, container: container))
                         case .export(let palletId):
                             ExportView(viewModel: ExportViewModel(palletId: palletId, container: container))
+                        case .history:
+                            HistoryView(viewModel: HistoryViewModel(container: container))
                         }
                     }
             }

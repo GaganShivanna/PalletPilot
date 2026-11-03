@@ -40,19 +40,17 @@ struct UploadView: View {
 
             Section {
                 uploadButton
+                if case .uploaded = viewModel.state {
+                    Label(
+                        "Pallet “\(viewModel.palletName.isEmpty ? "Untitled pallet" : viewModel.palletName)” created — video uploaded.",
+                        systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.subheadline)
+                }
                 if case .failed(let message) = viewModel.state {
                     Text(message)
                         .foregroundStyle(.red)
                         .font(.subheadline)
-                }
-            }
-
-            if case .uploaded(let jobId, let palletId) = viewModel.state {
-                Section {
-                    Button("Track progress") {
-                        router.navigate(to: .processing(jobId: jobId, palletId: palletId))
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
             }
         }
@@ -77,21 +75,35 @@ struct UploadView: View {
         }
     }
 
+    @ViewBuilder
     private var uploadButton: some View {
-        Button {
-            Task { await viewModel.startUpload() }
-        } label: {
-            switch viewModel.state {
-            case .creatingPallet, .uploading:
-                ProgressView().frame(maxWidth: .infinity)
-            case .failed:
+        switch viewModel.state {
+        case .creatingPallet, .uploading:
+            ProgressView().frame(maxWidth: .infinity)
+        case .uploaded(let jobId, let palletId):
+            Button {
+                router.navigate(to: .processing(jobId: jobId, palletId: palletId))
+            } label: {
+                Text("Track progress").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        case .failed:
+            Button {
+                Task { await viewModel.startUpload() }
+            } label: {
                 Text("Retry upload").frame(maxWidth: .infinity)
-            default:
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canUpload)
+        default:
+            Button {
+                Task { await viewModel.startUpload() }
+            } label: {
                 Text("Create pallet and upload").frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canUpload)
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(!viewModel.canUpload)
     }
 
 }

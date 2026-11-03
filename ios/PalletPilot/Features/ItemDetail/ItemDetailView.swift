@@ -4,6 +4,7 @@ import SwiftUI
 /// listing / condition / price / description groups, and a review toggle.
 /// Edits persist via `PATCH /items/{id}`; Save sits in the toolbar.
 struct ItemDetailView: View {
+    @Environment(\.container) private var container
     @StateObject private var viewModel: ItemDetailViewModel
 
     init(viewModel: ItemDetailViewModel) {
@@ -16,6 +17,13 @@ struct ItemDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     statusBanner
+                    if let saveMessage = viewModel.saveMessage {
+                        Label(saveMessage, systemImage: "checkmark.circle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.green)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
                     photoTabs
                     photoCard
                     Text("The item is not redrawn, so buyers see its real condition.")
@@ -23,6 +31,13 @@ struct ItemDetailView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 20)
                     titleBlock
+                        .onChange(of: viewModel.title) { viewModel.clearTitleError() }
+                    if let titleError = viewModel.titleError {
+                        Text(titleError)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 20)
+                    }
                     SectionHeader(text: "Listing")
                     listingCard
                     SectionHeader(text: "Condition")
@@ -113,7 +128,7 @@ struct ItemDetailView: View {
 
     private var photoTabs: some View {
         Picker("Photo", selection: $viewModel.photoTab) {
-            ForEach(ItemPhotoTab.allCases, id: \.self) { tab in
+            ForEach(viewModel.availablePhotoTabs, id: \.self) { tab in
                 Text(tab.title).tag(tab)
             }
         }
@@ -121,12 +136,47 @@ struct ItemDetailView: View {
         .padding(.horizontal, 16)
     }
 
+    /// Absolute files-endpoint URL for the selected tab, if the server
+    /// provided a photo for it. Relative paths resolve against the backend.
+    private func photoURL(for tab: ItemPhotoTab) -> URL? {
+        let path: String?
+        switch tab {
+        case .clean: path = viewModel.item?.imageUrls.first
+        case .original: path = viewModel.item?.originalImageUrl
+        }
+        return path.flatMap { container.configuration.url(for: $0) }
+    }
+
+    private var photoCaption: String {
+        switch viewModel.photoTab {
+        case .clean: return viewModel.cleanPhotoCaption
+        case .original: return "Original camera frame"
+        }
+    }
+
     private var photoCard: some View {
         VStack(spacing: 8) {
-            Image(systemName: "cube.box")
-                .font(.system(size: 56))
-                .foregroundStyle(Color(.systemGray2))
-            Text(viewModel.photoTab == .clean ? "Muse Image · background cleaned" : "Original camera frame")
+            if let url = photoURL(for: viewModel.photoTab) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 280)
+                    case .failure:
+                        photoPlaceholder
+                    case .empty:
+                        ProgressView()
+                            .frame(minHeight: 220)
+                    @unknown default:
+                        photoPlaceholder
+                    }
+                }
+            } else {
+                photoPlaceholder
+            }
+            Text(photoCaption)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -134,6 +184,13 @@ struct ItemDetailView: View {
         .frame(minHeight: 220)
         .background(AppTheme.cardBackground, in: RoundedRectangle(cornerRadius: AppTheme.cardRadius))
         .padding(.horizontal, 16)
+    }
+
+    private var photoPlaceholder: some View {
+        Image(systemName: "cube.box")
+            .font(.system(size: 56))
+            .foregroundStyle(Color(.systemGray2))
+            .frame(minHeight: 220)
     }
 
     private var titleBlock: some View {
@@ -175,21 +232,32 @@ struct ItemDetailView: View {
         .padding(12)
     }
 
+    /// Whole-row menu: tapping anywhere (label, value, or chevron) opens
+    /// the condition options. The value is single-line so long conditions
+    /// like "Unknown" never wrap.
     private var conditionCard: some View {
-        HStack {
-            Text("Condition").font(.body)
-            Spacer()
+        Menu {
             Picker("Condition", selection: $viewModel.condition) {
                 ForEach(ItemCondition.allCases, id: \.self) { condition in
                     Text(AppTheme.conditionLabel(condition.rawValue)).tag(condition)
                 }
             }
-            .tint(AppTheme.primary)
-            Image(systemName: "chevron.right")
-                .foregroundStyle(Color(.tertiaryLabel))
+        } label: {
+            HStack {
+                Text("Condition")
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(AppTheme.conditionLabel(viewModel.condition.rawValue))
+                    .font(.body)
+                    .foregroundStyle(AppTheme.primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .padding(12)
+            .background(AppTheme.cardBackground, in: RoundedRectangle(cornerRadius: AppTheme.cardRadius))
         }
-        .padding(12)
-        .background(AppTheme.cardBackground, in: RoundedRectangle(cornerRadius: AppTheme.cardRadius))
         .padding(.horizontal, 16)
     }
 

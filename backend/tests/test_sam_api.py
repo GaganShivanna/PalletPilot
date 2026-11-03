@@ -24,6 +24,50 @@ def settings(**overrides):
     return Settings(_env_file=None, **values)
 
 
+def _platform_codec():
+    """Return a fourcc tag that round-trips on this machine, or None.
+
+    Headless/container sessions (AVFoundation media stack unreachable, no
+    ffmpeg in the OpenCV build) cannot encode at all. Encode tests skip
+    there and run wherever a real encoder exists.
+    """
+    import os
+    import tempfile
+
+    frame = np.full((64, 64, 3), 150, dtype=np.uint8)
+
+    for tag in ("mp4v", "avc1", "mp4s"):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "probe.mp4")
+            writer = cv2.VideoWriter(
+                path, cv2.VideoWriter_fourcc(*tag), 3.0, (64, 64)
+            )
+
+            if not writer.isOpened():
+                writer.release()
+                continue
+
+            writer.write(frame)
+            writer.release()
+            capture = cv2.VideoCapture(path)
+            ok, _ = capture.read()
+            capture.release()
+
+            if ok:
+                return tag
+
+    return None
+
+
+PLATFORM_CODEC = _platform_codec()
+
+requires_encoder = pytest.mark.skipif(
+    PLATFORM_CODEC is None,
+    reason="no working OpenCV video encoder on this platform",
+)
+
+
+@requires_encoder
 def test_encode_video_preserves_frame_count(tmp_path):
     frames = []
 
@@ -37,6 +81,77 @@ def test_encode_video_preserves_frame_count(tmp_path):
 
     assert output.is_file()
     assert output.stat().st_size > 0
+
+
+@requires_encoder
+def test_encode_video_falls_back_to_next_codec(tmp_path, monkeypatch):
+    frames = []
+
+    for index in range(2):
+        path = tmp_path / f"frame_{index}.jpg"
+        image = np.full((100, 100, 3), 150, dtype=np.uint8)
+        assert cv2.imwrite(str(path), image)
+        frames.append(path)
+
+    real_writer = cv2.VideoWriter
+    seen_fourccs = []
+
+    def flaky_writer(path, fourcc, fps, size):
+        seen_fourccs.append(fourcc)
+
+        if len(seen_fourccs) == 1:
+            closed = Mock()
+            closed.isOpened.return_value = False
+            return closed
+
+        return real_writer(path, fourcc, fps, size)
+
+    monkeypatch.setattr(cv2, "VideoWriter", flaky_writer)
+
+    output = encode_video(frames, tmp_path / "sample.mp4", 3.0)
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    # First choice failed, second choice encoded the clip.
+    assert len(seen_fourccs) == 2
+
+
+@requires_encoder
+def test_encode_video_trims_odd_dimensions(tmp_path):
+    frames = []
+
+    for index in range(2):
+        path = tmp_path / f"frame_{index}.jpg"
+        image = np.full((101, 100, 3), 150, dtype=np.uint8)
+        assert cv2.imwrite(str(path), image)
+        frames.append(path)
+
+    output = encode_video(frames, tmp_path / "sample.mp4", 3.0)
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+
+
+def test_preferred_codec_goes_first():
+    from app.providers.sam_api import _codec_order
+
+    assert _codec_order(("avc1",)) == ("avc1", "mp4v", "mp4s")
+    assert _codec_order(()) == ("mp4v", "avc1", "mp4s")
+    assert _codec_order(("mp4v",)) == ("mp4v", "avc1", "mp4s")
+    assert _codec_order(("bogus-toolong",)) == ("mp4v", "avc1", "mp4s")
+
+
+def test_encode_video_reports_all_failed_codecs(tmp_path, monkeypatch):
+    path = tmp_path / "frame_0.jpg"
+    image = np.full((100, 100, 3), 150, dtype=np.uint8)
+    assert cv2.imwrite(str(path), image)
+
+    closed = Mock()
+    closed.isOpened.return_value = False
+    monkeypatch.setattr(cv2, "VideoWriter", lambda *args: closed)
+
+    with pytest.raises(ProviderError, match="tried mp4v"):
+        encode_video([path], tmp_path / "sample.mp4", 3.0)
 
 
 def test_completed_response_builds_product(tmp_path, monkeypatch):

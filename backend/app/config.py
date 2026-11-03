@@ -33,7 +33,10 @@ class Settings(BaseSettings):
 
     sam_model: str = "sam-3.1"
     sam_concepts: str = ""
-    sam_timeout_s: float = Field(default=180.0, gt=0)   
+    sam_timeout_s: float = Field(default=180.0, gt=0)
+    # Optional preferred MP4 codec order, e.g. SAM_FOURCC=avc1. Tried first,
+    # then the built-in mp4v,avc1,mp4s order. Empty (default) keeps defaults.
+    sam_fourcc: str = ""
 
     # Financial estimates (labeled as estimates in API responses).
     fee_rate: float = Field(default=0.13, ge=0.0, le=1.0)

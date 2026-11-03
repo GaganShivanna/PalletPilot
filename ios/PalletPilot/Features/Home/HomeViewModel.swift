@@ -14,19 +14,46 @@ enum ConnectionState: Equatable {
 final class HomeViewModel: ObservableObject {
     @Published private(set) var connection: ConnectionState = .idle
     @Published private(set) var baseURLDescription: String
+    @Published private(set) var recentPallets: [PalletHistoryEntry] = []
+    @Published private(set) var recentStatuses: [String: String] = [:]
 
     private let healthService: HealthServiceProtocol
+    private let historyStore: PalletHistoryStore
+    private let palletService: PalletServiceProtocol?
 
-    init(healthService: HealthServiceProtocol, baseURLDescription: String) {
+    init(
+        healthService: HealthServiceProtocol,
+        baseURLDescription: String,
+        historyStore: PalletHistoryStore = .init(),
+        palletService: PalletServiceProtocol? = nil
+    ) {
         self.healthService = healthService
         self.baseURLDescription = baseURLDescription
+        self.historyStore = historyStore
+        self.palletService = palletService
     }
 
     convenience init(container: AppContainer) {
         self.init(
             healthService: container.healthService,
-            baseURLDescription: container.configuration.baseURL.absoluteString
+            baseURLDescription: container.configuration.baseURL.absoluteString,
+            historyStore: container.palletHistoryStore,
+            palletService: container.palletService
         )
+    }
+
+    func refreshRecents() {
+        recentPallets = historyStore.recents()
+        guard let palletService else { return }
+        Task { @MainActor in
+            var statuses: [String: String] = [:]
+            for entry in recentPallets {
+                if let summary = try? await palletService.getSummary(palletId: entry.palletId) {
+                    statuses[entry.palletId] = summary.pallet.status
+                }
+            }
+            recentStatuses = statuses
+        }
     }
 
     func checkConnection() async {
