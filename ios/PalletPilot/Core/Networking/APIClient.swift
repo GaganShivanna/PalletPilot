@@ -16,6 +16,7 @@ protocol APIClientProtocol: Sendable {
     func get<T: Decodable>(_ path: String, as type: T.Type) async throws -> T
     func getData(_ path: String) async throws -> Data
     func post<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T
+    func patch<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T
     func upload<T: Decodable>(
         _ path: String,
         fileData: Data,
@@ -79,6 +80,26 @@ struct APIClient: APIClientProtocol {
         }
         var request = URLRequest(url: url)
         request.httpMethod = HTTPMethod.post.rawValue
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = payload
+        return try await decode(perform(request), as: T.self)
+    }
+
+    func patch<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T {
+        guard let url = configuration.url(for: path) else {
+            throw APIError.invalidRequest("Bad path: \(path)")
+        }
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let payload: Data
+        do {
+            payload = try encoder.encode(body)
+        } catch {
+            throw APIError.invalidRequest("Unencodable body for \(path): \(error)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = HTTPMethod.patch.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = payload

@@ -20,6 +20,22 @@ struct PalletPilotApp: App {
                                 viewModel: ProcessingViewModel(container: container, jobId: jobId),
                                 palletId: palletId
                             )
+                        case .capture(let palletId, let jobId):
+                            CaptureView(
+                                viewModel: CaptureViewModel(container: container),
+                                palletId: palletId,
+                                jobId: jobId
+                            )
+                        case .inventory(let palletId):
+                            InventoryView(viewModel: InventoryViewModel(palletId: palletId, container: container))
+                        case .itemDetail(let itemId, _):
+                            ItemDetailView(viewModel: ItemDetailViewModel(itemId: itemId, container: container))
+                        case .summary(let palletId):
+                            SummaryView(viewModel: SummaryViewModel(palletId: palletId, container: container))
+                        case .export(let palletId):
+                            ExportView(viewModel: ExportViewModel(palletId: palletId, container: container))
+                        case .history:
+                            HistoryView(viewModel: HistoryViewModel(container: container))
                         }
                     }
             }

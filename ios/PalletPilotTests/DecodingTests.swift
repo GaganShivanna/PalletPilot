@@ -91,6 +91,26 @@ struct DecodingTests {
         #expect(item.provider == "mock")
     }
 
+    @Test("Live-provider item passes through without mock assumptions")
+    func itemLiveProvider() throws {
+        // Same schema as the mock fixture, but with the values a live
+        // SAM/Muse Spark pipeline produces: hostile strings must survive
+        // verbatim and review state must reflect the server, not the mock.
+        let json = Fixtures.itemPriced
+            .replacingOccurrences(of: "\"provider\": \"mock\"", with: "\"provider\": \"muse_spark\"")
+            .replacingOccurrences(of: "\"price_source\": \"mock_fixture\"", with: "\"price_source\": \"muse_spark\"")
+            .replacingOccurrences(
+                of: "\"mock identification: not verified against imagery\"",
+                with: "\"low confidence: verify before posting\"")
+            .replacingOccurrences(of: "\"needs_review\": true", with: "\"needs_review\": false")
+        let item = try decode(Item.self, json)
+        #expect(item.provider == "muse_spark")
+        #expect(item.priceSource == "muse_spark")
+        #expect(item.reviewReasons == ["low confidence: verify before posting"])
+        #expect(!item.needsReview)
+        #expect(item.suggestedPrice == 45.0)
+    }
+
     @Test("Unpriced item decodes nulls, never zero")
     func itemUnpriced() throws {
         let item = try decode(Item.self, Fixtures.itemUnpriced)

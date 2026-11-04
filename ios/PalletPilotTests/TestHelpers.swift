@@ -244,9 +244,12 @@ struct FakeHealthService: HealthServiceProtocol {
     }
 }
 
-/// Fake pallet service returning a canned pallet.
+/// Fake pallet service returning canned pallet data.
 final class FakePalletService: PalletServiceProtocol {
     var result: Result<Pallet, Error>
+    var summaryResult: Result<PalletSummary, Error>?
+    var itemsResult: Result<[Item], Error>?
+    var exportResult: Result<Data, Error>?
     private(set) var created: [PalletCreate] = []
 
     init(result: Result<Pallet, Error>) {
@@ -256,6 +259,94 @@ final class FakePalletService: PalletServiceProtocol {
     func createPallet(_ create: PalletCreate) async throws -> Pallet {
         created.append(create)
         return try result.get()
+    }
+
+    func getSummary(palletId: String) async throws -> PalletSummary {
+        try summaryResult?.get() ?? { throw APIError.invalidRequest("unset summary") }()
+    }
+
+    func listItems(palletId: String) async throws -> [Item] {
+        try itemsResult?.get() ?? { throw APIError.invalidRequest("unset items") }()
+    }
+
+    func exportCSV(palletId: String) async throws -> Data {
+        try exportResult?.get() ?? { throw APIError.invalidRequest("unset export") }()
+    }
+}
+
+/// Fake item service for detail/edit tests.
+final class FakeItemService: ItemServiceProtocol {
+    var item: Item?
+    var error: Error?
+    private(set) var patched: [(id: String, patch: ItemPatch)] = []
+
+    init(item: Item? = nil, error: Error? = nil) {
+        self.item = item
+        self.error = error
+    }
+
+    func getItem(id: String) async throws -> Item {
+        if let error { throw error }
+        guard let item else { throw APIError.invalidRequest("unset item") }
+        return item
+    }
+
+    func patchItem(id: String, patch: ItemPatch) async throws -> Item {
+        if let error { throw error }
+        patched.append((id, patch))
+        guard var item else { throw APIError.invalidRequest("unset item") }
+        if let title = patch.title { item.title = title }
+        if let needsReview = patch.needsReview { item.needsReview = needsReview }
+        if patch.clearsPrice { item.suggestedPrice = nil }
+        else if let price = patch.suggestedPrice { item.suggestedPrice = price }
+        self.item = item
+        return item
+    }
+}
+
+/// Fake SSE client yielding a scripted frame sequence (or error) for
+/// `ProcessingViewModel.startLive()` tests. Decoding mirrors the app's
+/// fractional-seconds ISO 8601 handling.
+final class FakeSSEClient: SSEClientProtocol {
+    var frames: [ServerSentEvent] = []
+    var error: Error?
+    private(set) var urls: [URL] = []
+    private(set) var lastEventIDs: [Int?] = []
+
+    func events(url: URL, lastEventID: Int?) -> AsyncThrowingStream<ServerSentEvent, Error> {
+        urls.append(url)
+        lastEventIDs.append(lastEventID)
+        let frames = frames
+        let error = error
+        return AsyncThrowingStream { continuation in
+            Task {
+                for frame in frames {
+                    if Task.isCancelled { break }
+                    continuation.yield(frame)
+                }
+                if let error {
+                    continuation.finish(throwing: error)
+                } else {
+                    continuation.finish()
+                }
+            }
+        }
+    }
+
+    func decodeJobEvent(from data: Data) throws -> JobEvent {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            let withFraction = ISO8601DateFormatter()
+            withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = withFraction.date(from: raw) { return date }
+            if let date = ISO8601DateFormatter().date(from: raw) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "bad date")
+        }
+        return try decoder.decode(JobEvent.self, from: data)
     }
 }
 
@@ -280,7 +371,11 @@ final class FakeJobService: JobServiceProtocol {
         return statuses[min(calls - 1, statuses.count - 1)]
     }
 
+    /// When set, `listJobs()` throws instead of returning `statuses`.
+    var listError: Error?
+
     func listJobs() async throws -> [Job] {
-        statuses
+        if let listError { throw listError }
+        return statuses
     }
 }
