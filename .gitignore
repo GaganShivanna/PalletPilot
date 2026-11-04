@@ -27,3 +27,7 @@ backend/data/
 # Xcode user-specific state (shared schemes in xcshareddata/ are kept)
 xcuserdata/
 *.xcuserstate
+
+
+# Design Pages
+design/*

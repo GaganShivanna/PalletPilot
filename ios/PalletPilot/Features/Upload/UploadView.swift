@@ -1,12 +1,14 @@
-import PhotosUI
 import SwiftUI
 
 /// Upload flow (USER_FLOW.md Flow A): pallet details → video pick → create
 /// pallet → upload → handoff to progress tracking. No inventory UI here.
+///
+/// Video picking is check-then-confirm: the library sheet checks one video
+/// and only hands it over when Select is tapped.
 struct UploadView: View {
     @Environment(\.router) private var router
     @StateObject private var viewModel: UploadViewModel
-    @State private var pickerItem: PhotosPickerItem?
+    @State private var showsLibrary = false
 
     init(viewModel: UploadViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -23,30 +25,32 @@ struct UploadView: View {
             }
 
             Section("Video") {
-                PhotosPicker(selection: $pickerItem, matching: .videos) {
+                Button {
+                    showsLibrary = true
+                } label: {
                     Label("Choose video", systemImage: "film")
                 }
-                .onChange(of: pickerItem) { _, item in
-                    Task { await loadVideo(from: item) }
+                .sheet(isPresented: $showsLibrary) {
+                    VideoLibraryPicker { data, ext in
+                        viewModel.setVideo(data: data, fileExtension: ext)
+                    }
                 }
                 videoStatus
             }
 
             Section {
                 uploadButton
+                if case .uploaded = viewModel.state {
+                    Label(
+                        "Pallet “\(viewModel.palletName.isEmpty ? "Untitled pallet" : viewModel.palletName)” created — video uploaded.",
+                        systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.subheadline)
+                }
                 if case .failed(let message) = viewModel.state {
                     Text(message)
                         .foregroundStyle(.red)
                         .font(.subheadline)
-                }
-            }
-
-            if case .uploaded(let jobId, let palletId) = viewModel.state {
-                Section {
-                    Button("Track progress") {
-                        router.navigate(to: .processing(jobId: jobId, palletId: palletId))
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
             }
         }
@@ -71,29 +75,35 @@ struct UploadView: View {
         }
     }
 
+    @ViewBuilder
     private var uploadButton: some View {
-        Button {
-            Task { await viewModel.startUpload() }
-        } label: {
-            switch viewModel.state {
-            case .creatingPallet, .uploading:
-                ProgressView().frame(maxWidth: .infinity)
-            case .failed:
+        switch viewModel.state {
+        case .creatingPallet, .uploading:
+            ProgressView().frame(maxWidth: .infinity)
+        case .uploaded(let jobId, let palletId):
+            Button {
+                router.navigate(to: .processing(jobId: jobId, palletId: palletId))
+            } label: {
+                Text("Track progress").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        case .failed:
+            Button {
+                Task { await viewModel.startUpload() }
+            } label: {
                 Text("Retry upload").frame(maxWidth: .infinity)
-            default:
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canUpload)
+        default:
+            Button {
+                Task { await viewModel.startUpload() }
+            } label: {
                 Text("Create pallet and upload").frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canUpload)
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(!viewModel.canUpload)
     }
 
-    private func loadVideo(from item: PhotosPickerItem?) async {
-        guard let item else { return }
-        guard let data = try? await item.loadTransferable(type: Data.self) else {
-            return
-        }
-        let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "mp4"
-        viewModel.setVideo(data: data, fileExtension: ext)
-    }
 }

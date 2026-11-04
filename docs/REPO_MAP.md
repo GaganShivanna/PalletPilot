@@ -22,9 +22,12 @@ Last updated: 2026-10-31. State: backend Phase 2 + AI integration done (mock def
 
 ## Planned layout
 
-- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing:
-  `.xcodeproj`, `PalletPilot/{App,Core/{…},Features/{Home,Upload,Processing},Services/{Health,Pallet,Job}}`,
-  `PalletPilotTests/`. Inventory/item-edit/profit/export not built yet.
+- `ios/` — SwiftUI app (see `ios/AGENTS.md`). Phase 1 + upload/processing +
+  design screens: `.xcodeproj`, `PalletPilot/{App,Core/{…,Components/DesignComponents,Theme},
+  Features/{Home,Upload,Processing,Capture,Inventory,ItemDetail,Summary,Export,History},
+  Services/{Health,Pallet,Job,Item,PalletHistoryStore}}`, `PalletPilotTests/`.
+  `Core/Networking/SSEClient` (job events with poll fallback),
+  `Core/Models/JobEvent` (event envelope), `ItemPhotoImage` (files-endpoint photos).
 - `backend/` — FastAPI service (see `backend/AGENTS.md`).
   - `app/routes/` — `health.py` (`GET /health`), `jobs.py` (`POST/GET /jobs`,
     `GET /jobs/{id}`, `GET /jobs/{id}/events` (SSE), `GET /jobs/{id}/files/{path}`), `pallets.py`

@@ -3,6 +3,71 @@
 Phase 1 foundation: SwiftUI app + typed networking against the verified backend
 contracts (`docs/ios/API_CONTRACTS.md`). No uploads, inventory, or pricing yet.
 
+## Filming the demo (no experience needed)
+
+Follow these steps in order. You need a Mac with Xcode installed, this
+project folder, a short phone video of a pallet being unboxed (under
+30 seconds works best), and the AI key already put in place by a developer
+(`backend/.env` file — ask if you are not sure it is done).
+
+### 1. Start the backend (the app's brain)
+
+1. Open the **Terminal** app (Spotlight search: type `Terminal`, press Enter).
+2. Type `cd`, press space, then **drag the PalletPilot folder** from Finder
+   into the Terminal window and press Enter. This moves Terminal into the
+   project.
+3. Type `cd backend` and press Enter.
+4. Type `.venv/bin/python -m uvicorn app.main:app` and press Enter.
+5. Leave this window open. You will know it worked when the last lines say
+   something like `Uvicorn running on http://127.0.0.1:8000`. If you close
+   this window, the app stops working — just reopen it and repeat steps 2–4.
+
+### 2. Open the app in Xcode
+
+1. In Finder, open the PalletPilot folder, then the `ios` folder, and
+   double-click `PalletPilot.xcodeproj`. Xcode opens.
+2. At the top of the Xcode window, click the device dropdown (it may say
+   something like "iPhone 17") and pick any iPhone simulator.
+3. Press the **Play button** (top left, or ⌘R on your keyboard). The
+   simulator (a fake iPhone on your screen) launches with the PalletPilot
+   app. First launch can take a minute — that is normal.
+
+### 3. Put your video inside the simulator
+
+The simulator has its own photo library, separate from your Mac:
+
+1. Find your pallet video in Finder.
+2. **Drag the video file onto the simulator window** and drop it. It saves
+   into the simulator's Photos app automatically.
+3. (Alternative, if drag-and-drop misbehaves: open Terminal and run
+   `xcrun simctl addmedia booted <video-file>`, replacing `<video-file>`
+   with the file's path.)
+
+### 4. Run the demo flow in the app
+
+1. On the Home screen, tap **Check connection** — it should say Connected.
+   If it says anything else, the backend from step 1 is not running.
+2. Tap **New pallet from video**, type a name like "Demo pallet", and tap
+   **Choose video**. Tap your clip to checkmark it, then **Select video**.
+3. Tap **Create pallet and upload**. You will see a "Pallet created" message
+   and a **Track progress** button — tap it.
+4. Processing takes a few minutes on the first run (the AI is watching the
+   whole video). Leave it alone; the progress screen updates by itself.
+5. Tap **View inventory**, then tap an item: set its condition from the menu,
+   type a price, and tap **Save** — look for the green "Saved" message.
+6. Go back and open **Summary** (totals come straight from the server),
+   then **Export** to share the CSV.
+
+### If something goes wrong while filming
+
+- **"Processing failed" in red:** the backend hit a problem. Keep the
+  Terminal window from step 1 visible — its last lines usually say why
+  (for example, a missing video encoder or API key).
+- **Endless spinner on Processing:** the video may still be analyzing (large
+  clips take a while). Give it up to a few minutes before retrying.
+- **Old results on screen:** go back to Home and re-enter — the app always
+  refetches from the server, so what you see is current.
+
 ## Prerequisites
 
 - Xcode 26.x (project targets iOS 17.0+, Swift 5.0 language mode).
