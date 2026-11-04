@@ -133,7 +133,7 @@ struct CaptureView: View {
                             .font(.headline)
                             .foregroundStyle(.white)
                             .lineLimit(1)
-                        Text("\(AppTheme.conditionLabel(item.condition)) · \(Int((item.confidence ?? 0) * 100))% sure")
+                        Text("\(Int((item.confidence ?? 0) * 100))% sure")
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.75))
                     }

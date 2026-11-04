@@ -20,7 +20,6 @@ def draft_description(identification: Identification) -> str:
     parts = [
         f"{identification.name} ({identification.category}).",
         f"Brand: {brand}.",
-        f"Observed condition: {identification.condition}.",
     ]
     if identification.category in ELECTRONIC_CATEGORIES:
         parts.append("Functionality untested; sold as pictured.")

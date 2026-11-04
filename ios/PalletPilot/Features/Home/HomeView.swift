@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Home landing screen: app identity, quick actions, backend connectivity,
-/// and recent pallets with live server status. All content is live — the
-/// pallet list comes from this device's history plus per-pallet status reads.
+/// Home landing screen: app identity, quick actions, and recent pallets
+/// with live server status. All content is live — the pallet list comes
+/// from this device's history plus per-pallet status reads.
+/// (The backend connectivity check is hidden for now.)
 struct HomeView: View {
     @Environment(\.router) private var router
     @StateObject private var viewModel: HomeViewModel
@@ -21,16 +22,9 @@ struct HomeView: View {
                         .entrance(index: 0, appeared: appeared)
                     actionsCard
                         .entrance(index: 1, appeared: appeared)
-                    ConnectionStatusView(
-                        state: viewModel.connection,
-                        baseURL: viewModel.baseURLDescription
-                    ) {
-                        Task { await viewModel.checkConnection() }
-                    }
-                    .entrance(index: 2, appeared: appeared)
                     if !viewModel.recentPallets.isEmpty {
                         recentsCard
-                            .entrance(index: 3, appeared: appeared)
+                            .entrance(index: 2, appeared: appeared)
                     }
                 }
                 .padding()

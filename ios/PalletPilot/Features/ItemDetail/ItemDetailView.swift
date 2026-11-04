@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Item detail screen (screenshot 6): photo tabs, confidence + evidence line,
-/// listing / condition / price / description groups, and a review toggle.
+/// listing / price / description groups, and a review toggle.
+/// (Condition is hidden until the backend provides real values.)
 /// Edits persist via `PATCH /items/{id}`; Save sits in the toolbar.
 struct ItemDetailView: View {
     @Environment(\.container) private var container
@@ -40,12 +41,6 @@ struct ItemDetailView: View {
                     }
                     SectionHeader(text: "Listing")
                     listingCard
-                    SectionHeader(text: "Condition")
-                    conditionCard
-                    Text("New, Like new, Good, Fair, Poor, For parts")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 20)
                     SectionHeader(text: "Price")
                     priceCard
                         .onChange(of: viewModel.priceText) { viewModel.clearPriceError() }
@@ -147,13 +142,6 @@ struct ItemDetailView: View {
         return path.flatMap { container.configuration.url(for: $0) }
     }
 
-    private var photoCaption: String {
-        switch viewModel.photoTab {
-        case .clean: return viewModel.cleanPhotoCaption
-        case .original: return "Original camera frame"
-        }
-    }
-
     private var photoCard: some View {
         VStack(spacing: 8) {
             if let url = photoURL(for: viewModel.photoTab) {
@@ -176,9 +164,6 @@ struct ItemDetailView: View {
             } else {
                 photoPlaceholder
             }
-            Text(photoCaption)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: 220)
@@ -230,35 +215,6 @@ struct ItemDetailView: View {
                 .font(.body)
         }
         .padding(12)
-    }
-
-    /// Whole-row menu: tapping anywhere (label, value, or chevron) opens
-    /// the condition options. The value is single-line so long conditions
-    /// like "Unknown" never wrap.
-    private var conditionCard: some View {
-        Menu {
-            Picker("Condition", selection: $viewModel.condition) {
-                ForEach(ItemCondition.allCases, id: \.self) { condition in
-                    Text(AppTheme.conditionLabel(condition.rawValue)).tag(condition)
-                }
-            }
-        } label: {
-            HStack {
-                Text("Condition")
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Text(AppTheme.conditionLabel(viewModel.condition.rawValue))
-                    .font(.body)
-                    .foregroundStyle(AppTheme.primary)
-                    .lineLimit(1)
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(Color(.tertiaryLabel))
-            }
-            .padding(12)
-            .background(AppTheme.cardBackground, in: RoundedRectangle(cornerRadius: AppTheme.cardRadius))
-        }
-        .padding(.horizontal, 16)
     }
 
     private var priceCard: some View {

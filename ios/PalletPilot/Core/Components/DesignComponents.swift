@@ -123,7 +123,7 @@ struct InventoryRow: View {
                 Text(item.title)
                     .font(.headline)
                     .lineLimit(2)
-                Text("\(AppTheme.conditionLabel(item.condition)) · \(item.category)")
+                Text(item.category)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 if item.needsReview, let reason = item.reviewReasons.first {
