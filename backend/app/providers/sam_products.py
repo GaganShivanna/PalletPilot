@@ -11,6 +11,13 @@ from app.providers.base import DetectedProduct, ProviderError
 from app.providers.sam_output import SamObservation
 
 
+# Observations narrower or shorter than this are degenerate tracking
+# fragments (e.g. a 3x204 sliver). They score spuriously high on
+# sharpness-per-pixel but are unidentifiable, so they are skipped in
+# favor of larger observations of the same track.
+MIN_CROP_SIDE = 48
+
+
 def build_sam_products(
     observations: list[SamObservation],
     frame_paths: list[Path],
@@ -40,6 +47,8 @@ def build_sam_products(
     for object_id, track in sorted(tracks.items()):
         best = None
         best_score = -1.0
+        fallback = None
+        fallback_area = -1
 
         for observation in track:
             index = observation.frame_index
@@ -99,12 +108,26 @@ def build_sam_products(
             if not mask.any():
                 continue
 
+            area = (right - left) * (bottom - top)
+
+            if area > fallback_area:
+                fallback_area = area
+                fallback = (observation, crop, mask)
+
+            if (right - left) < MIN_CROP_SIDE or (
+                bottom - top
+            ) < MIN_CROP_SIDE:
+                continue
+
             gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
             score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
             if score > best_score:
                 best_score = score
                 best = (observation, crop, mask)
+
+        if best is None:
+            best = fallback
 
         if best is None:
             raise ProviderError(

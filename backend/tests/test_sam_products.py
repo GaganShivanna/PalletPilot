@@ -74,6 +74,84 @@ def test_creates_one_product_per_track(tmp_path):
         assert np.all(mask == 255)
 
 
+def make_mixed_frames(tmp_path):
+    """One frame with a sharp sliver, one with a large smooth region."""
+    sharp = np.full((100, 100, 3), 150, dtype=np.uint8)
+    sharp[10:70, 10:13:2] = 0
+    sharp[10:70, 11:13:2] = 255
+    smooth = np.full((100, 100, 3), 150, dtype=np.uint8)
+
+    paths = []
+
+    for index, frame in enumerate((sharp, smooth)):
+        path = tmp_path / f"mixed_{index}.jpg"
+        assert cv2.imwrite(str(path), frame)
+        paths.append(path)
+
+    return paths
+
+
+def degenerate_observation(frame_index=0):
+    # 3x60 sliver: spuriously sharp, but unidentifiable.
+    return SamObservation(
+        object_id="7",
+        frame_index=frame_index,
+        box=(10, 10, 13, 70),
+        mask=bytes([1] * 25),
+        mask_width=5,
+        mask_height=5,
+        confidence=0.9,
+    )
+
+
+def test_skips_degenerate_sliver_for_larger_observation(tmp_path):
+    frames = make_mixed_frames(tmp_path)
+    large = replace(
+        degenerate_observation(frame_index=1),
+        box=(10, 10, 70, 70),
+    )
+
+    (product,) = build_sam_products(
+        [degenerate_observation(0), large],
+        frames,
+        tmp_path / "products",
+        request_id="request_1",
+    )
+
+    crop = cv2.imread(product.frame_path)
+    assert crop.shape[:2] == (60, 60)
+
+
+def test_falls_back_to_largest_degenerate_observation(tmp_path):
+    smooth = np.full((100, 100, 3), 150, dtype=np.uint8)
+    striped = np.full((100, 100, 3), 150, dtype=np.uint8)
+    striped[20:30, 20:30:2] = 0
+    striped[20:30, 21:30:2] = 255
+
+    frames = []
+
+    for index, frame in enumerate((smooth, striped)):
+        path = tmp_path / f"fallback_{index}.jpg"
+        assert cv2.imwrite(str(path), frame)
+        frames.append(path)
+
+    small_square = replace(
+        degenerate_observation(frame_index=1),
+        box=(20, 20, 30, 30),
+    )
+
+    (product,) = build_sam_products(
+        [degenerate_observation(0), small_square],
+        frames,
+        tmp_path / "products",
+        request_id="request_1",
+    )
+
+    # Both observations are degenerate; the larger area wins.
+    crop = cv2.imread(product.frame_path)
+    assert crop.shape[:2] == (60, 3)
+
+
 def test_rejects_unknown_frame(tmp_path):
     with pytest.raises(ProviderError, match="frame index"):
         build_sam_products(
