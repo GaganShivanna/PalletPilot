@@ -17,7 +17,10 @@ from app.providers.base import (
 )
 from app.providers.concept_discovery import discover_concepts
 from app.providers.sam_output import parse_completed_sam_output
-from app.providers.sam_products import build_sam_products
+from app.providers.sam_products import (
+    build_sam_products,
+    deduplicate_products,
+)
 
 
 # Codecs tried in order for the SAM input clip. mp4v is preferred, but
@@ -353,7 +356,7 @@ def detect_with_sam(
         preferred,
     )
 
-    products = []
+    grouped = []
 
     for index, concept in enumerate(concepts):
         output_text = request_sam_output(
@@ -384,6 +387,8 @@ def detect_with_sam(
                 "check for duplicates across concepts."
             )
 
-        products.extend(candidates)
+        grouped.append(
+            (f"concept_{index}", candidates, observations)
+        )
 
-    return products
+    return deduplicate_products(grouped)

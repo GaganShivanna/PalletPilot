@@ -124,9 +124,10 @@ seller review.` Unit tests cover every mapping
 
 - SAM requires even frame width/height, uniform frame dims, and an encoded
   clip ≤ 20 MB — long videos fail fast with `ProviderError` (job-level).
-- No dedup across SAM concepts: the same physical item found under two
-  concepts becomes two items (flagged in `review_reasons`); occlusion/
-  re-entry splits are likewise not resolved.
+- Cross-concept dedup: tracks from different concepts with median box
+  IoU ≥ 0.5 over ≥3 shared frames are merged (largest kept, merge noted
+  in `review_reasons`). Same-response occlusion/re-entry splits are
+  still not resolved.
 - External calls run sequentially; `PROVIDER_MAX_CONCURRENCY` is not yet
   enforced (slow but safe).
 - `services/segmentation.py::detect_items` is a dead Phase 1 stub; the

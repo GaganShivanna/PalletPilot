@@ -3,6 +3,7 @@
 import re
 from collections import defaultdict
 from pathlib import Path
+from statistics import median
 
 import cv2
 import numpy as np
@@ -16,6 +17,13 @@ from app.providers.sam_output import SamObservation
 # sharpness-per-pixel but are unidentifiable, so they are skipped in
 # favor of larger observations of the same track.
 MIN_CROP_SIDE = 48
+
+# Cross-concept duplicate criterion: tracks from different SAM requests
+# are the same physical item when their boxes overlap this strongly on
+# enough shared frames. Medians of 0.96+ for true duplicates vs 0.41 max
+# for distinct items on demo_1104 (jobs 08736b88, f287e378).
+DUPLICATE_MEDIAN_IOU = 0.5
+DUPLICATE_MIN_SHARED_FRAMES = 3
 
 
 def build_sam_products(
@@ -163,3 +171,129 @@ def build_sam_products(
         )
 
     return products
+
+
+def _box_iou(
+    first: tuple[int, int, int, int],
+    second: tuple[int, int, int, int],
+) -> float:
+    inter_w = max(
+        0, min(first[2], second[2]) - max(first[0], second[0])
+    )
+    inter_h = max(
+        0, min(first[3], second[3]) - max(first[1], second[1])
+    )
+    inter = inter_w * inter_h
+    union = (
+        (first[2] - first[0]) * (first[3] - first[1])
+        + (second[2] - second[0]) * (second[3] - second[1])
+        - inter
+    )
+    return inter / union if union else 0.0
+
+
+def deduplicate_products(
+    grouped: list[
+        tuple[str, list[DetectedProduct], list[SamObservation]]
+    ],
+) -> list[DetectedProduct]:
+    """Merge tracks from different SAM requests on the same item.
+
+    Takes one (request_id, products, observations) triple per concept
+    request. Tracks from different requests whose boxes overlap strongly
+    (median IoU >= DUPLICATE_MEDIAN_IOU over shared frames) are the same
+    physical item found under two concepts; only the largest-max-area
+    track is kept, with the merge recorded in its review reasons. Tracks
+    within one response are left to SAM's own association.
+    """
+    boxes: dict[str, dict[int, tuple[int, int, int, int]]] = {}
+    max_area: dict[str, int] = {}
+    owner: dict[str, str] = {}
+    products: dict[str, DetectedProduct] = {}
+    order: list[str] = []
+
+    for request_id, prods, observations in grouped:
+        for observation in observations:
+            track_id = f"{request_id}_{observation.object_id}"
+            left, top, right, bottom = observation.box
+            boxes.setdefault(track_id, {})[
+                observation.frame_index
+            ] = observation.box
+            area = (right - left) * (bottom - top)
+            max_area[track_id] = max(max_area.get(track_id, 0), area)
+
+        for product in prods:
+            owner[product.track_id] = request_id
+
+            if product.track_id not in products:
+                products[product.track_id] = product
+                order.append(product.track_id)
+
+    parent = {track_id: track_id for track_id in products}
+
+    def find(track_id: str) -> str:
+        while parent[track_id] != track_id:
+            parent[track_id] = parent[parent[track_id]]
+            track_id = parent[track_id]
+
+        return track_id
+
+    def union(first: str, second: str) -> None:
+        root_first = find(first)
+        root_second = find(second)
+
+        if root_first != root_second:
+            parent[max(root_first, root_second)] = min(
+                root_first, root_second
+            )
+
+    ids = sorted(products)
+
+    for pos, first in enumerate(ids):
+        for second in ids[pos + 1 :]:
+            if owner[first] == owner[second]:
+                continue
+
+            shared = sorted(
+                set(boxes.get(first, ())) & set(boxes.get(second, ()))
+            )
+
+            if len(shared) < DUPLICATE_MIN_SHARED_FRAMES:
+                continue
+
+            ious = sorted(
+                _box_iou(boxes[first][frame], boxes[second][frame])
+                for frame in shared
+            )
+
+            if median(ious) >= DUPLICATE_MEDIAN_IOU:
+                union(first, second)
+
+    groups: dict[str, list[str]] = {}
+
+    for track_id in ids:
+        groups.setdefault(find(track_id), []).append(track_id)
+
+    kept = []
+
+    for track_id in order:
+        members = groups[find(track_id)]
+        keeper = min(
+            members, key=lambda t: (-max_area.get(t, 0), t)
+        )
+
+        if track_id != keeper:
+            continue
+
+        dropped = sorted(set(members) - {track_id})
+
+        if dropped:
+            products[track_id].review_reasons.append(
+                "Merged duplicate track(s) "
+                + ", ".join(dropped)
+                + " (overlapping segmentation across concepts)."
+            )
+
+        kept.append(products[track_id])
+
+    return kept

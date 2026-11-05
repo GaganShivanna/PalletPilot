@@ -5,9 +5,12 @@ import cv2
 import numpy as np
 import pytest
 
-from app.providers.base import ProviderError
+from app.providers.base import DetectedProduct, ProviderError
 from app.providers.sam_output import SamObservation
-from app.providers.sam_products import build_sam_products
+from app.providers.sam_products import (
+    build_sam_products,
+    deduplicate_products,
+)
 
 
 def observation(object_id="7", frame_index=0):
@@ -150,6 +153,84 @@ def test_falls_back_to_largest_degenerate_observation(tmp_path):
     # Both observations are degenerate; the larger area wins.
     crop = cv2.imread(product.frame_path)
     assert crop.shape[:2] == (60, 3)
+
+
+def stub_product(track_id):
+    return DetectedProduct(
+        item_id=track_id,
+        track_id=track_id,
+        frame_path="crop.jpg",
+        provider="sam",
+    )
+
+
+def track_observations(object_id, boxes):
+    return [
+        SamObservation(
+            object_id=object_id,
+            frame_index=index,
+            box=box,
+            mask=bytes([1]),
+            mask_width=1,
+            mask_height=1,
+            confidence=0.9,
+        )
+        for index, box in enumerate(boxes)
+    ]
+
+
+def test_merges_overlapping_cross_concept_tracks():
+    small = track_observations("1", [(10, 10, 50, 50)] * 4)
+    large = track_observations("2", [(12, 12, 54, 54)] * 4)
+
+    (kept,) = deduplicate_products(
+        [
+            ("concept_0", [stub_product("concept_0_1")], small),
+            ("concept_1", [stub_product("concept_1_2")], large),
+        ]
+    )
+
+    assert kept.track_id == "concept_1_2"
+    assert any(
+        "concept_0_1" in reason for reason in kept.review_reasons
+    )
+
+
+def test_keeps_tracks_below_overlap_threshold():
+    left = track_observations("1", [(10, 10, 50, 50)] * 4)
+    right = track_observations("2", [(30, 10, 70, 50)] * 4)
+
+    kept = deduplicate_products(
+        [
+            ("concept_0", [stub_product("concept_0_1")], left),
+            ("concept_1", [stub_product("concept_1_2")], right),
+        ]
+    )
+
+    assert {p.track_id for p in kept} == {
+        "concept_0_1",
+        "concept_1_2",
+    }
+
+
+def test_ignores_same_concept_overlap():
+    boxes = [(10, 10, 50, 50)] * 4
+
+    kept = deduplicate_products(
+        [
+            (
+                "concept_0",
+                [
+                    stub_product("concept_0_1"),
+                    stub_product("concept_0_2"),
+                ],
+                track_observations("1", boxes)
+                + track_observations("2", boxes),
+            ),
+        ]
+    )
+
+    assert len(kept) == 2
 
 
 def test_rejects_unknown_frame(tmp_path):
