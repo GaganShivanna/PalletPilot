@@ -177,6 +177,11 @@ class MuseSparkIdentificationProvider:
 
         payload = {
             "model": self.settings.muse_spark_model,
+            # Best-effort determinism: temperature 0 + seed reduce
+            # flip-flopping on borderline crops, but identical bytes
+            # can still yield different verdicts across calls.
+            "temperature": 0,
+            "seed": 7,
             "messages": [
                 {
                     "role": "user",

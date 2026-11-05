@@ -63,6 +63,8 @@ def test_identification_with_mocked_http(tmp_path, monkeypatch):
     payload = json.loads(request.data)
 
     assert payload["model"] == settings.muse_spark_model
+    assert payload["temperature"] == 0
+    assert payload["seed"] == 7
     assert payload["response_format"]["type"] == "json_schema"
     assert payload["messages"][0]["content"][1]["type"] == "image_url"
 
